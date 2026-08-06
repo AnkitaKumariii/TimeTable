@@ -98,15 +98,16 @@ TURSO_AUTH_TOKEN=<token from above>
 NitaTime is packaged as a unified, multi-stage Docker container. The FastAPI backend serves both the API and the compiled React frontend, meaning you only have to deploy a single service.
 
 1. **Push code to GitHub**
-2. **Connect to a PaaS** (e.g., Render, Railway, Fly.io) or run on a VPS.
-3. Select **Docker** as your runtime.
-4. Set the following environment variables in your deployment dashboard:
+2. **Choose your hosting method:**
+   - **PaaS (e.g., Render, Railway, Fly.io)**: Connect your GitHub repo, select **Docker** as your runtime, and configure the environment variables in your deployment dashboard.
+   - **VPS (e.g., DigitalOcean, AWS EC2)**: Clone your repo to the server, create an `.env` file with your environment variables, and run `docker build -t nitatime . && docker run -p 8000:8000 --env-file .env nitatime`.
+3. Set the following environment variables for either method:
    - `DATABASE_URL` (Your Turso `libsql://...` URL)
    - `TURSO_AUTH_TOKEN` (Your Turso token)
    - `ADMIN_USERNAME` (Your desired admin login)
    - `ADMIN_PASSWORD` (Your desired admin password)
    - `JWT_SECRET_KEY` (Generate a secure random string)
-5. The container exposes port `8000` by default.
+4. The container exposes port `8000` by default.
 
 > ⚠️ **Cold start**: If you are using a free tier on services like Render, the app will spin down after 15 minutes of inactivity. The first request after being idle may take **30–60 seconds**.
 

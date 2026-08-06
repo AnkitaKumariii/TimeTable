@@ -37,8 +37,23 @@ def _build_engine():
             class LibsqlConnectionWrapper:
                 def __init__(self, c):
                     self._c = c
+
+                @property
+                def isolation_level(self):
+                    return self._c.isolation_level
+
+                @isolation_level.setter
+                def isolation_level(self, value):
+                    # Reject unsupported isolation level runtime changes
+                    if value != self._c.isolation_level:
+                        raise ValueError(
+                            f"libsql-experimental does not support dynamic isolation_level changes. "
+                            f"Tried to change from {self._c.isolation_level} to {value}."
+                        )
+
                 def __getattr__(self, name):
                     return getattr(self._c, name)
+
                 def create_function(self, *args, **kwargs):
                     pass # Prevent SQLAlchemy SQLite dialect from crashing
                     
