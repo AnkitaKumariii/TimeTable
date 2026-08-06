@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: nitatime-api
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # set manually in Render dashboard
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false   # e.g. https://your-app.pages.dev
+    healthCheckPath: /health
+    autoDeploy: true
