@@ -32,7 +32,17 @@ def _build_engine():
         auth_token = settings.turso_auth_token
 
         def _creator():
-            return libsql.connect(database=host, auth_token=auth_token)
+            conn = libsql.connect(database=host, auth_token=auth_token)
+            
+            class LibsqlConnectionWrapper:
+                def __init__(self, c):
+                    self._c = c
+                def __getattr__(self, name):
+                    return getattr(self._c, name)
+                def create_function(self, *args, **kwargs):
+                    pass # Prevent SQLAlchemy SQLite dialect from crashing
+                    
+            return LibsqlConnectionWrapper(conn)
 
         engine = create_engine(
             "sqlite://",  # use SQLite dialect

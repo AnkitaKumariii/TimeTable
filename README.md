@@ -11,7 +11,7 @@ Single admin login, multi-batch scheduling, conflict detection.
 | Database | SQLite (dev) / Turso (prod) |
 | Auth | JWT (single admin) |
 | Frontend | React + Vite + Tailwind CSS + TanStack Query |
-| Deploy | Render (backend) + Cloudflare Pages (frontend) |
+| Deploy | Unified Docker Container (Render / Railway / VPS) |
 
 ---
 
@@ -93,36 +93,22 @@ TURSO_AUTH_TOKEN=<token from above>
 
 ---
 
-## Deployment
+## Deployment (Docker)
 
-### Backend → Render
+NitaTime is packaged as a unified, multi-stage Docker container. The FastAPI backend serves both the API and the compiled React frontend, meaning you only have to deploy a single service.
 
-1. Push code to GitHub
-2. Create a new Web Service on Render, point to `backend/` directory
-3. Render uses `render.yaml` for config automatically
-4. Set environment variables in Render dashboard:
-   - `DATABASE_URL` (Turso URL)
-   - `TURSO_AUTH_TOKEN`
-   - `ADMIN_USERNAME` / `ADMIN_PASSWORD`
-   - `CORS_ORIGINS` (your Cloudflare Pages URL)
-5. Health check: `/health`
+1. **Push code to GitHub**
+2. **Connect to a PaaS** (e.g., Render, Railway, Fly.io) or run on a VPS.
+3. Select **Docker** as your runtime.
+4. Set the following environment variables in your deployment dashboard:
+   - `DATABASE_URL` (Your Turso `libsql://...` URL)
+   - `TURSO_AUTH_TOKEN` (Your Turso token)
+   - `ADMIN_USERNAME` (Your desired admin login)
+   - `ADMIN_PASSWORD` (Your desired admin password)
+   - `JWT_SECRET_KEY` (Generate a secure random string)
+5. The container exposes port `8000` by default.
 
-> ⚠️ **Cold start**: Render free tier spins down after 15 minutes of inactivity.
-> First request after idle takes **30–60 seconds**. The frontend shows a loading state
-> while this happens. Consider adding a cron job to ping `/health` every 10 minutes
-> if you need faster wake-up times.
-
-### Frontend → Cloudflare Pages
-
-1. Connect your GitHub repo in Cloudflare Pages
-2. Set build settings:
-   - **Framework**: Vite
-   - **Build command**: `npm run build`
-   - **Build output**: `dist`
-   - **Root directory**: `frontend`
-3. Add environment variable:
-   - `VITE_API_URL` = `https://your-render-service.onrender.com`
-4. The `_redirects` file in `public/` handles SPA routing
+> ⚠️ **Cold start**: If you are using a free tier on services like Render, the app will spin down after 15 minutes of inactivity. The first request after being idle may take **30–60 seconds**.
 
 ---
 
