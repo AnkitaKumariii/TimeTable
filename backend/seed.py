@@ -39,15 +39,15 @@ def seed():
 
         # ── Default time slots ────────────────────────────────────────────────
         default_slots = [
-            TimeSlot(label="Period 1", start_time=time(8, 0),  end_time=time(9, 0),  sort_order=1,  is_break=False),
-            TimeSlot(label="Period 2", start_time=time(9, 0),  end_time=time(10, 0), sort_order=2,  is_break=False),
-            TimeSlot(label="Period 3", start_time=time(10, 0), end_time=time(11, 0), sort_order=3,  is_break=False),
-            TimeSlot(label="Period 4", start_time=time(11, 0), end_time=time(12, 0), sort_order=4,  is_break=False),
-            TimeSlot(label="Lunch",    start_time=time(12, 0), end_time=time(13, 0), sort_order=5,  is_break=True),
-            TimeSlot(label="Period 5", start_time=time(13, 0), end_time=time(14, 0), sort_order=6,  is_break=False),
-            TimeSlot(label="Period 6", start_time=time(14, 0), end_time=time(15, 0), sort_order=7,  is_break=False),
-            TimeSlot(label="Period 7", start_time=time(15, 0), end_time=time(16, 0), sort_order=8,  is_break=False),
-            TimeSlot(label="Period 8", start_time=time(16, 0), end_time=time(17, 0), sort_order=9,  is_break=False),
+            TimeSlot(label="Period 1", start_time=time(9, 0),  end_time=time(10, 0), sort_order=1,  is_break=False),
+            TimeSlot(label="Period 2", start_time=time(10, 0), end_time=time(11, 0), sort_order=2,  is_break=False),
+            TimeSlot(label="Period 3", start_time=time(11, 0), end_time=time(12, 0), sort_order=3,  is_break=False),
+            TimeSlot(label="Period 4", start_time=time(12, 0), end_time=time(13, 0), sort_order=4,  is_break=False),
+            TimeSlot(label="Lunch",    start_time=time(13, 0), end_time=time(14, 0), sort_order=5,  is_break=True),
+            TimeSlot(label="Period 5", start_time=time(14, 0), end_time=time(15, 0), sort_order=6,  is_break=False),
+            TimeSlot(label="Period 6", start_time=time(15, 0), end_time=time(16, 0), sort_order=7,  is_break=False),
+            TimeSlot(label="Period 7", start_time=time(16, 0), end_time=time(17, 0), sort_order=8,  is_break=False),
+            TimeSlot(label="Period 8", start_time=time(17, 0), end_time=time(18, 0), sort_order=9,  is_break=False),
         ]
 
         existing_count = db.query(TimeSlot).count()
