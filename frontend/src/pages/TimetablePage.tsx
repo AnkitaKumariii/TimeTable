@@ -32,8 +32,8 @@ export function TimetablePage() {
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-            <CalendarDays size={22} className="text-brand-400" />
+          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <CalendarDays size={22} className="text-brand-600" />
             Weekly Timetable
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -48,7 +48,7 @@ export function TimetablePage() {
             className="btn-ghost p-2 rounded-lg"
             title="Refresh"
           >
-            <RefreshCw size={15} className={isLoading ? 'animate-spin text-brand-400' : ''} />
+            <RefreshCw size={15} className={isLoading ? 'animate-spin text-brand-600' : ''} />
           </button>
 
           {/* Batch filter */}
@@ -72,13 +72,13 @@ export function TimetablePage() {
             </button>
 
             {showBatchMenu && (
-              <div className="absolute right-0 mt-1 w-52 card shadow-xl border-[#3d4168] z-30 animate-slide-up overflow-hidden">
+              <div className="absolute right-0 mt-1 w-52 card shadow-xl border-slate-300 z-30 animate-slide-up overflow-hidden">
                 <ul className="py-1">
                   <li>
                     <button
                       onClick={() => { setFilterBatch('all'); setShowBatchMenu(false); }}
-                      className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-white/5
-                        ${filterBatch === 'all' ? 'text-brand-300 bg-brand-500/10' : 'text-slate-300'}`}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100
+                        ${filterBatch === 'all' ? 'text-brand-600 bg-brand-500/10' : 'text-slate-600'}`}
                     >
                       All Batches
                     </button>
@@ -88,8 +88,8 @@ export function TimetablePage() {
                       <button
                         onClick={() => { setFilterBatch(b.id); setShowBatchMenu(false); }}
                         className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2.5
-                          transition-colors hover:bg-white/5
-                          ${filterBatch === b.id ? 'text-brand-300 bg-brand-500/10' : 'text-slate-300'}`}
+                          transition-colors hover:bg-slate-100
+                          ${filterBatch === b.id ? 'text-brand-600 bg-brand-500/10' : 'text-slate-600'}`}
                       >
                         <span
                           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -110,7 +110,7 @@ export function TimetablePage() {
       {slots.length === 0 ? (
         <div className="card p-12 text-center">
           <CalendarDays size={40} className="text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 font-medium">No time slots configured</p>
+          <p className="text-slate-500 font-medium">No time slots configured</p>
           <p className="text-slate-500 text-sm mt-1">
             Go to <strong>Settings → Time Slots</strong> to add periods first.
           </p>

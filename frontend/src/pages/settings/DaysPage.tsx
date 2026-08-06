@@ -42,7 +42,7 @@ export function DaysPage() {
   return (
     <div>
       <div className="mb-5">
-        <h2 className="text-lg font-semibold text-slate-100">Active Days</h2>
+        <h2 className="text-lg font-semibold text-slate-800">Active Days</h2>
         <p className="text-sm text-slate-500">Choose which days are shown in the timetable grid.</p>
       </div>
 
@@ -56,12 +56,12 @@ export function DaysPage() {
               onClick={() => toggle(day as DayOfWeek)}
               className={`card px-4 py-3 flex items-center justify-between transition-all border
                 ${active
-                  ? 'border-brand-500/60 bg-brand-500/10 text-brand-300'
-                  : 'border-[#2d3148] text-slate-500 hover:text-slate-300 hover:border-[#3d4168]'
+                  ? 'border-brand-500/60 bg-brand-500/10 text-brand-600'
+                  : 'border-slate-200 text-slate-500 hover:text-slate-600 hover:border-slate-300'
                 }`}
             >
               <span className="text-sm font-medium">{day}</span>
-              {active && <Check size={14} className="text-brand-400" />}
+              {active && <Check size={14} className="text-brand-600" />}
             </button>
           );
         })}

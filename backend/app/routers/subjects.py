@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import Subject, User
+from app.models import Subject, TimetableEntry, User
 from app.schemas import SubjectCreate, SubjectOut, SubjectUpdate
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
@@ -70,5 +70,6 @@ def delete_subject(
     subject = db.query(Subject).filter(Subject.id == subject_id).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
+    db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id).delete()
     db.delete(subject)
     db.commit()

@@ -94,7 +94,7 @@ export function Combobox({
               style={{ backgroundColor: selected.color }}
             />
           )}
-          <span className={cn(selected ? 'text-slate-200' : 'text-slate-500')}>
+          <span className={cn(selected ? 'text-slate-700' : 'text-slate-500')}>
             {selected?.label ?? placeholder}
           </span>
           {selected?.sublabel && (
@@ -112,9 +112,9 @@ export function Combobox({
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full card shadow-2xl border-[#3d4168] animate-slide-up overflow-hidden">
+        <div className="absolute z-50 mt-1 w-full card shadow-2xl border-slate-300 animate-slide-up overflow-hidden">
           {/* Search */}
-          <div className="p-2 border-b border-[#2d3148]">
+          <div className="p-2 border-b border-slate-200">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
@@ -144,8 +144,8 @@ export function Combobox({
                   onClick={() => handleSelect(opt)}
                   className={cn(
                     'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left',
-                    'hover:bg-white/5 transition-colors',
-                    opt.value === value && 'bg-brand-500/10 text-brand-300',
+                    'hover:bg-slate-100 transition-colors',
+                    opt.value === value && 'bg-brand-500/10 text-brand-700',
                   )}
                 >
                   {opt.color && (
@@ -170,8 +170,8 @@ export function Combobox({
                 <button
                   type="button"
                   onClick={handleAddNew}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-brand-400
-                             hover:bg-brand-500/10 transition-colors border-t border-[#2d3148] mt-1 pt-2"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-brand-600
+                             hover:bg-brand-500/10 transition-colors border-t border-slate-200 mt-1 pt-2"
                 >
                   <Plus size={13} />
                   {addNewLabel}

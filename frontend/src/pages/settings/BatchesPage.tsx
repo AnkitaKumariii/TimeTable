@@ -33,7 +33,7 @@ function ColorPicker({
         type="color"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-6 h-6 rounded cursor-pointer bg-transparent border border-[#2d3148]"
+        className="w-6 h-6 rounded cursor-pointer bg-transparent border border-slate-200"
         title="Custom color"
       />
     </div>
@@ -119,7 +119,7 @@ export function BatchesPage() {
   }
 
   async function handleDelete(batch: Batch) {
-    if (!confirm(`Delete "${batch.name}"? All timetable entries for this batch will also be deleted.`)) return;
+    if (!window.confirm(`Delete "${batch.name}"? All timetable entries for this batch will also be deleted.`)) return;
     try {
       await deleteBatch(batch.id);
       qc.invalidateQueries({ queryKey: ['batches'] });
@@ -134,7 +134,7 @@ export function BatchesPage() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Batches</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Batches</h2>
           <p className="text-sm text-slate-500">Manage student cohorts and their colors.</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditing(null); }} className="btn btn-sm btn-primary">
@@ -168,11 +168,11 @@ export function BatchesPage() {
                     className="w-4 h-4 rounded-full flex-shrink-0"
                     style={{ backgroundColor: batch.color }}
                   />
-                  <span className="flex-1 text-sm font-medium text-slate-200">{batch.name}</span>
+                  <span className="flex-1 text-sm font-medium text-slate-700">{batch.name}</span>
                   {!batch.is_active && (
-                    <span className="badge bg-slate-500/20 text-slate-400 text-[10px]">Inactive</span>
+                    <span className="badge bg-slate-100 text-slate-700 text-[10px]">Inactive</span>
                   )}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity">
                     <button
                       onClick={() => { setEditing(batch); setShowForm(false); }}
                       className="btn-ghost p-1.5 rounded-lg"
@@ -181,7 +181,7 @@ export function BatchesPage() {
                     </button>
                     <button
                       onClick={() => handleDelete(batch)}
-                      className="btn-ghost p-1.5 rounded-lg text-red-400/60 hover:text-red-400"
+                      className="btn-ghost p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50"
                     >
                       <Trash2 size={13} />
                     </button>

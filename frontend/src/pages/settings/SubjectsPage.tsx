@@ -20,7 +20,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
         />
       ))}
       <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-6 h-6 rounded cursor-pointer bg-transparent border border-[#2d3148]" />
+        className="w-6 h-6 rounded cursor-pointer bg-transparent border border-slate-200" />
     </div>
   );
 }
@@ -96,7 +96,7 @@ export function SubjectsPage() {
   }
 
   async function handleDelete(subject: Subject) {
-    if (!confirm(`Delete "${subject.name}"?`)) return;
+    if (!window.confirm(`Delete "${subject.name}"?`)) return;
     try {
       await deleteSubject(subject.id);
       qc.invalidateQueries({ queryKey: ['subjects'] });
@@ -110,7 +110,7 @@ export function SubjectsPage() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Subjects</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Subjects</h2>
           <p className="text-sm text-slate-500">Reusable courses. Pick from dropdowns when building the timetable.</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditing(null); }} className="btn btn-sm btn-primary">
@@ -133,11 +133,11 @@ export function SubjectsPage() {
               ) : (
                 <div className="card px-4 py-3 flex items-center gap-3 group">
                   <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                  <span className="flex-1 text-sm font-medium text-slate-200">{s.name}</span>
-                  <span className="text-xs font-mono text-slate-500 px-2 py-0.5 rounded bg-[#12152a]">{s.short_code}</span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setEditing(s); setShowForm(false); }} className="btn-ghost p-1.5 rounded-lg"><Edit2 size={13} /></button>
-                    <button onClick={() => handleDelete(s)} className="btn-ghost p-1.5 rounded-lg text-red-400/60 hover:text-red-400"><Trash2 size={13} /></button>
+                  <span className="flex-1 text-sm font-medium text-slate-700">{s.name}</span>
+                  <span className="text-xs font-mono text-slate-500 px-2 py-0.5 rounded bg-white">{s.short_code}</span>
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity">
+                    <button aria-label={`Edit subject ${s.name}`} onClick={() => { setEditing(s); setShowForm(false); }} className="btn-ghost p-1.5 rounded-lg"><Edit2 size={13} /></button>
+                    <button aria-label={`Delete subject ${s.name}`} onClick={() => handleDelete(s)} className="btn-ghost p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50"><Trash2 size={13} /></button>
                   </div>
                 </div>
               )}

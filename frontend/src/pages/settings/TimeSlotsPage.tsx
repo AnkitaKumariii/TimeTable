@@ -6,6 +6,7 @@ import axios from 'axios';
 import { getTimeSlots, createTimeSlot, updateTimeSlot, deleteTimeSlot } from '../../api';
 import type { TimeSlot, TimeSlotCreate } from '../../types';
 import { fmtSlotRange } from '../../lib/utils';
+import { ConfirmModal } from '../../components/ConfirmModal';
 
 function TimeSlotForm({ initial, maxOrder, onSave, onCancel }: {
   initial?: TimeSlot; maxOrder: number; onSave: (d: TimeSlotCreate) => Promise<void>; onCancel: () => void;
@@ -53,7 +54,7 @@ function TimeSlotForm({ initial, maxOrder, onSave, onCancel }: {
               onChange={(e) => setIsBreak(e.target.checked)}
               className="w-4 h-4 accent-brand-500 rounded"
             />
-            <span className="text-sm text-slate-300">Mark as Break (Lunch)</span>
+            <span className="text-sm text-slate-600">Mark as Break (Lunch)</span>
           </label>
         </div>
       </div>
@@ -71,6 +72,7 @@ export function TimeSlotsPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<TimeSlot | null>(null);
+  const [deleting, setDeleting] = useState<TimeSlot | null>(null);
   const { data: slots = [], isLoading } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
   const sorted = [...slots].sort((a, b) => a.sort_order - b.sort_order);
   const maxOrder = sorted.length > 0 ? sorted[sorted.length - 1].sort_order : 0;
@@ -97,22 +99,24 @@ export function TimeSlotsPage() {
     }
   }
 
-  async function handleDelete(slot: TimeSlot) {
-    if (!confirm(`Delete "${slot.label}"?`)) return;
+  async function confirmDelete(slot: TimeSlot) {
     try {
       await deleteTimeSlot(slot.id);
       qc.invalidateQueries({ queryKey: ['time-slots'] });
       toast.success('Deleted');
     } catch (err: unknown) {
       toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed');
+    } finally {
+      setDeleting(null);
     }
   }
+
 
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Time Slots</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Time Slots</h2>
           <p className="text-sm text-slate-500">Configure periods and breaks. Sorted by order number.</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditing(null); }} className="btn btn-sm btn-primary">
@@ -122,6 +126,16 @@ export function TimeSlotsPage() {
 
       {showForm && !editing && (
         <div className="mb-4"><TimeSlotForm maxOrder={maxOrder} onSave={handleCreate} onCancel={() => setShowForm(false)} /></div>
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Delete Time Slot"
+          message={`Are you sure you want to delete "${deleting.label}"?`}
+          confirmText="Delete"
+          onConfirm={() => confirmDelete(deleting)}
+          onCancel={() => setDeleting(null)}
+        />
       )}
 
       {isLoading ? <div className="text-slate-500 text-sm">Loading…</div> : sorted.length === 0 ? (
@@ -140,17 +154,17 @@ export function TimeSlotsPage() {
                     <GripVertical size={14} className="text-slate-600 flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <span className={`text-sm font-medium ${slot.is_break ? 'text-amber-300' : 'text-slate-200'}`}>
+                    <span className={`text-sm font-medium ${slot.is_break ? 'text-amber-600' : 'text-slate-800'}`}>
                       {slot.label}
                     </span>
                     <span className="text-xs text-slate-500 ml-2">
                       {fmtSlotRange(slot.start_time, slot.end_time)}
                     </span>
                   </div>
-                  {slot.is_break && <span className="badge bg-amber-500/20 text-amber-400 text-[10px]">Break</span>}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setEditing(slot); setShowForm(false); }} className="btn-ghost p-1.5 rounded-lg"><Edit2 size={13} /></button>
-                    <button onClick={() => handleDelete(slot)} className="btn-ghost p-1.5 rounded-lg text-red-400/60 hover:text-red-400"><Trash2 size={13} /></button>
+                  {slot.is_break && <span className="badge bg-amber-100 text-amber-700 text-[10px]">Break</span>}
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity">
+                    <button aria-label={`Edit time slot ${slot.label}`} onClick={() => { setEditing(slot); setShowForm(false); }} className="btn-ghost p-1.5 rounded-lg"><Edit2 size={13} /></button>
+                    <button aria-label={`Delete time slot ${slot.label}`} onClick={() => setDeleting(slot)} className="btn-ghost p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50"><Trash2 size={13} /></button>
                   </div>
                 </div>
               )}

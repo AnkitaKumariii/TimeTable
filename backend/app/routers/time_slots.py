@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import TimeSlot, User
+from app.models import TimeSlot, TimetableEntry, User
 from app.schemas import TimeSlotCreate, TimeSlotOut, TimeSlotUpdate
 
 router = APIRouter(prefix="/time-slots", tags=["time-slots"])
@@ -85,5 +85,6 @@ def delete_time_slot(
     slot = db.query(TimeSlot).filter(TimeSlot.id == slot_id).first()
     if not slot:
         raise HTTPException(status_code=404, detail="Time slot not found")
+    db.query(TimetableEntry).filter(TimetableEntry.time_slot_id == slot_id).delete()
     db.delete(slot)
     db.commit()

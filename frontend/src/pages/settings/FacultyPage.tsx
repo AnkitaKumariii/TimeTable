@@ -72,7 +72,7 @@ export function FacultyPage() {
   }
 
   async function handleDelete(f: FacultyMember) {
-    if (!confirm(`Remove "${f.name}" from the faculty list?`)) return;
+    if (!window.confirm(`Remove "${f.name}" from the faculty list?`)) return;
     try {
       await deleteFaculty(f.id);
       qc.invalidateQueries({ queryKey: ['faculty'] });
@@ -86,7 +86,7 @@ export function FacultyPage() {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Faculty</h2>
+          <h2 className="text-lg font-semibold text-slate-800">Faculty</h2>
           <p className="text-sm text-slate-500">Teachers and instructors reused across all timetable entries.</p>
         </div>
         <button onClick={() => { setShowForm(true); setEditing(null); }} className="btn btn-sm btn-primary">
@@ -108,16 +108,16 @@ export function FacultyPage() {
                 <FacultyForm initial={f} onSave={(d) => handleUpdate(f, d)} onCancel={() => setEditing(null)} />
               ) : (
                 <div className="card px-4 py-3 flex items-center gap-3 group">
-                  <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 text-xs font-bold flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-600 text-xs font-bold flex-shrink-0">
                     {f.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-200 truncate">{f.name}</p>
+                    <p className="text-sm font-medium text-slate-700 truncate">{f.name}</p>
                     {f.email && <p className="text-xs text-slate-500 truncate">{f.email}</p>}
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setEditing(f); setShowForm(false); }} className="btn-ghost p-1.5 rounded-lg"><Edit2 size={13} /></button>
-                    <button onClick={() => handleDelete(f)} className="btn-ghost p-1.5 rounded-lg text-red-400/60 hover:text-red-400"><Trash2 size={13} /></button>
+                  <div className="flex items-center gap-1 opacity-100 transition-opacity">
+                    <button aria-label={`Edit faculty member ${f.name}`} onClick={() => { setEditing(f); setShowForm(false); }} className="btn-ghost p-1.5 rounded-lg"><Edit2 size={13} /></button>
+                    <button aria-label={`Delete faculty member ${f.name}`} onClick={() => handleDelete(f)} className="btn-ghost p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50"><Trash2 size={13} /></button>
                   </div>
                 </div>
               )}

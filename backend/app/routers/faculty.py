@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import Faculty, User
+from app.models import Faculty, TimetableEntry, User
 from app.schemas import FacultyCreate, FacultyOut, FacultyUpdate
 
 router = APIRouter(prefix="/faculty", tags=["faculty"])
@@ -69,6 +69,7 @@ def delete_faculty(
 ):
     faculty = db.query(Faculty).filter(Faculty.id == faculty_id).first()
     if not faculty:
-        raise HTTPException(status_code=404, detail="Faculty not found")
+        raise HTTPException(status_code=404, detail="Faculty member not found")
+    db.query(TimetableEntry).filter(TimetableEntry.faculty_id == faculty_id).delete()
     db.delete(faculty)
     db.commit()

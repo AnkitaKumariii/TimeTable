@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import Batch, User
+from app.models import Batch, TimetableEntry, User
 from app.schemas import BatchCreate, BatchOut, BatchUpdate
 
 router = APIRouter(prefix="/batches", tags=["batches"])
@@ -70,5 +70,6 @@ def delete_batch(
     batch = db.query(Batch).filter(Batch.id == batch_id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+    db.query(TimetableEntry).filter(TimetableEntry.batch_id == batch_id).delete()
     db.delete(batch)
     db.commit()

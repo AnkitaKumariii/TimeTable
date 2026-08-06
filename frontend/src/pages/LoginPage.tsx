@@ -38,9 +38,9 @@ export function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-500/20 border border-brand-500/30 mb-4">
-            <CalendarDays size={28} className="text-brand-400" />
+            <CalendarDays size={28} className="text-brand-600" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-100">NitaTime</h1>
+          <h1 className="text-2xl font-bold text-slate-800">NitaTime</h1>
           <p className="text-sm text-slate-500 mt-1">Timetable Management System</p>
         </div>
 
@@ -77,7 +77,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
                 >
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>

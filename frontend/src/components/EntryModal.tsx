@@ -56,8 +56,8 @@ function QuickCreate({ type, initialName, onCreated, onCancel }: QuickCreateProp
   }
 
   return (
-    <div className="mt-1 p-3 rounded-lg bg-[#12152a] border border-brand-500/40 animate-slide-up">
-      <p className="text-xs font-semibold text-brand-400 mb-2">
+    <div className="mt-1 p-3 rounded-lg bg-white border border-brand-500/40 animate-slide-up">
+      <p className="text-xs font-semibold text-brand-600 mb-2">
         Quick-create {type}
       </p>
       <div className="space-y-2">
@@ -79,7 +79,7 @@ function QuickCreate({ type, initialName, onCreated, onCancel }: QuickCreateProp
         )}
         {type !== 'faculty' && (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-400">Color</label>
+            <label className="text-xs text-slate-500">Color</label>
             <input
               type="color"
               value={color}
@@ -283,7 +283,7 @@ export function EntryModal({
       <div className="modal-panel">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-slate-100">
+          <h2 className="text-base font-semibold text-slate-800">
             {isEditing ? 'Edit Entry' : 'Add Entry'}
           </h2>
           <button onClick={onClose} className="btn-ghost p-1 rounded-lg">
@@ -374,8 +374,8 @@ export function EntryModal({
                   onClick={() => { setDay(d); setConflict({ kind: 'none' }); }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
                     ${day === d
-                      ? 'bg-brand-500/20 text-brand-300 border-brand-500/60'
-                      : 'text-slate-400 border-[#2d3148] hover:bg-white/5 hover:text-slate-200'
+                      ? 'bg-brand-500/20 text-brand-700 border-brand-500/60'
+                      : 'text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
                     }`}
                 >
                   {d.slice(0, 3)}
@@ -395,8 +395,8 @@ export function EntryModal({
                   onClick={() => { setSlotId(s.id); setConflict({ kind: 'none' }); }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
                     ${slotId === s.id
-                      ? 'bg-brand-500/20 text-brand-300 border-brand-500/60'
-                      : 'text-slate-400 border-[#2d3148] hover:bg-white/5 hover:text-slate-200'
+                      ? 'bg-brand-500/20 text-brand-700 border-brand-500/60'
+                      : 'text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
                     }`}
                 >
                   {s.label}
@@ -431,7 +431,7 @@ export function EntryModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#2d3148]">
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-200">
           <div>
             {isEditing && (
               <button

@@ -18,18 +18,18 @@ export function Layout() {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside
-        className={`flex-shrink-0 flex flex-col border-r border-[#2d3148] bg-[#1a1d27]
+        className={`flex-shrink-0 flex flex-col border-r border-slate-200 bg-white
                    transition-all duration-200 ${collapsed ? 'w-14' : 'w-56'}`}
         style={{ position: 'sticky', top: 0, height: '100vh' }}
       >
         {/* Logo */}
-        <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-[#2d3148]
+        <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-slate-200
                         ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-7 h-7 rounded-lg bg-brand-500/20 border border-brand-500/30 flex items-center justify-center flex-shrink-0">
-            <CalendarDays size={15} className="text-brand-400" />
+          <div className="w-7 h-7 rounded-lg bg-brand-50 border border-brand-200 flex items-center justify-center flex-shrink-0">
+            <CalendarDays size={15} className="text-brand-600" />
           </div>
           {!collapsed && (
-            <span className="font-bold text-slate-100 text-sm tracking-tight">NitaTime</span>
+            <span className="font-bold text-slate-900 text-sm tracking-tight">NitaTime</span>
           )}
         </div>
 
@@ -44,11 +44,11 @@ export function Layout() {
 
           {/* Settings group */}
           {!collapsed && (
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600 px-3 pt-4 pb-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 px-3 pt-4 pb-1">
               Settings
             </p>
           )}
-          {collapsed && <div className="border-t border-[#2d3148] my-2" />}
+          {collapsed && <div className="border-t border-slate-200 my-2" />}
 
           <NavLink to="/settings/batches" className={({ isActive }) =>
             `nav-link ${isActive ? 'active' : ''} ${collapsed ? 'justify-center px-2' : ''}`
@@ -83,7 +83,7 @@ export function Layout() {
         </nav>
 
         {/* Footer */}
-        <div className={`p-2 border-t border-[#2d3148] flex flex-col gap-1`}>
+        <div className={`p-2 border-t border-slate-200 flex flex-col gap-1`}>
           <button
             onClick={() => setCollapsed(!collapsed)}
             className={`nav-link justify-${collapsed ? 'center' : 'start'}`}
@@ -93,7 +93,7 @@ export function Layout() {
           </button>
           <button
             onClick={logout}
-            className={`nav-link text-red-400/60 hover:text-red-400 hover:bg-red-500/5
+            className={`nav-link text-red-600 hover:text-red-700 hover:bg-red-50
                        ${collapsed ? 'justify-center px-2' : ''}`}
           >
             <LogOut size={16} />
