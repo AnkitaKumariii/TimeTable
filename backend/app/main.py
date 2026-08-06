@@ -57,16 +57,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ────────────────────────────────────────────────────────────────────
-app.include_router(auth.router)
-app.include_router(batches.router)
-app.include_router(subjects.router)
-app.include_router(faculty.router)
-app.include_router(time_slots.router)
-app.include_router(timetable.router)
+import os
+from fastapi import APIRouter
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
+# ── API Routers ────────────────────────────────────────────────────────────────
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth.router)
+api_router.include_router(batches.router)
+api_router.include_router(subjects.router)
+api_router.include_router(faculty.router)
+api_router.include_router(time_slots.router)
+api_router.include_router(timetable.router)
 
-@app.get("/health", tags=["health"])
+@api_router.get("/health", tags=["health"])
 def health_check():
     """Render health check endpoint — no auth required."""
     return {"status": "ok", "service": "NitaTime API"}
+
+app.include_router(api_router)
+
+# ── Frontend Serving ───────────────────────────────────────────────────────────
+frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend", "dist")
+
+if os.path.isdir(frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Serve specific static files from root if they exist (like favicon, robots.txt)
+        potential_file = os.path.join(frontend_dist, full_path)
+        if full_path and os.path.isfile(potential_file):
+            return FileResponse(potential_file)
+        
+        # Fallback to index.html for React Router SPA
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
