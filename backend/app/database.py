@@ -27,12 +27,10 @@ def _build_engine():
                 "Run: pip install libsql-experimental"
             ) from exc
 
-        # Strip the libsql:// scheme and keep the host[:port]/database part
-        host = url.removeprefix("libsql://")
         auth_token = settings.turso_auth_token
 
         def _creator():
-            conn = libsql.connect(database=host, auth_token=auth_token)
+            conn = libsql.connect(database=url, auth_token=auth_token)
             
             class LibsqlConnectionWrapper:
                 def __init__(self, c):
