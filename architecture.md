@@ -16,25 +16,25 @@ flowchart TD
     classDef database fill:#ffebee,stroke:#e53935,stroke-width:2px;
 
     %% Client Layer
-    Client[Browser / User]:::client
+    Client["Browser / User"]:::client
 
     %% Docker Container (Unified Deployment)
     subgraph Container [Unified Docker Container]
         direction TB
-        Static[React + Vite Frontend\n(Served as Static Files)]:::frontend
-        FastAPI[FastAPI Backend]:::backend
+        Static["React + Vite Frontend<br/>(Served as Static Files)"]:::frontend
+        FastAPI["FastAPI Backend"]:::backend
         
-        Static -.->|API Calls\nJSON over HTTP| FastAPI
+        Static -.->|"API Calls<br/>JSON over HTTP"| FastAPI
     end
     class Container docker
 
     %% Database Layer
-    DB[(Database\nSQLite / Turso)]:::database
+    DB[("Database<br/>SQLite / Turso")]:::database
 
     %% Connections
-    Client -->|HTTP Request| Static
-    Client -->|REST API Requests| FastAPI
-    FastAPI <-->|SQLAlchemy ORM| DB
+    Client -->|"HTTP Request"| Static
+    Client -->|"REST API Requests"| FastAPI
+    FastAPI <-->|"SQLAlchemy ORM"| DB
 ```
 
 ## Data Model Architecture
