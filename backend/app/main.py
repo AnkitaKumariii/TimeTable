@@ -71,7 +71,7 @@ api_router.include_router(faculty.router)
 api_router.include_router(time_slots.router)
 api_router.include_router(timetable.router)
 
-@api_router.get("/health", tags=["health"])
+@api_router.api_route("/health", methods=["GET", "HEAD"], tags=["health"])
 def health_check():
     """Render health check endpoint — no auth required."""
     return {"status": "ok", "service": "NitaTime API"}
