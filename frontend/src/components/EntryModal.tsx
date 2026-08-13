@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Trash2, Save } from 'lucide-react';
+import { X, Trash2, Save, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
 import {
   createBatch, createEntry, createFaculty, createSubject,
-  deleteEntry, getBatches, getFaculty, getSubjects, getTimeSlots,
+  deleteEntry, getBatches, getFaculty, getSubjects,
   updateEntry,
 } from '../api';
 import type {
@@ -15,7 +15,6 @@ import type {
 } from '../types';
 import { Combobox } from './Combobox';
 import { HardConflictAlert, SoftWarningAlert } from './ConflictNotification';
-import { fmtSlotRange } from '../lib/utils';
 
 // Inline quick-create mini-form
 interface QuickCreateProps {
@@ -140,12 +139,11 @@ export function EntryModal({
   const { data: batches = [] } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
   const { data: subjects = [] } = useQuery({ queryKey: ['subjects'], queryFn: () => getSubjects() });
   const { data: faculty = [] } = useQuery({ queryKey: ['faculty'], queryFn: getFaculty });
-  const { data: slots = [] } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
 
   const [batchId, setBatchId] = useState<number | null>(existingEntry?.batch_id ?? defaultBatchId ?? null);
   const [subjectId, setSubjectId] = useState<number | null>(existingEntry?.subject_id ?? null);
   const [facultyId, setFacultyId] = useState<number | null>(existingEntry?.faculty_id ?? null);
-  const [day, setDay] = useState<DayOfWeek | null>(existingEntry?.day ?? defaultDay ?? null);
+  const [day] = useState<DayOfWeek>(existingEntry?.day ?? defaultDay ?? 'Monday');
   const [slotId, setSlotId] = useState<number | null>(existingEntry?.time_slot_id ?? defaultSlotId ?? null);
 
   const [conflict, setConflict] = useState<ConflictState>({ kind: 'none' });
@@ -156,7 +154,6 @@ export function EntryModal({
   const isComplete = batchId != null && subjectId != null && facultyId != null && day != null && slotId != null;
   const isEditing = !!existingEntry;
 
-  const nonBreakSlots = slots.filter((s) => !s.is_break);
   const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
 
   function handleBatchChange(newBatchId: string | number) {
@@ -284,13 +281,9 @@ export function EntryModal({
     }
   }
 
-  const DAY_OPTIONS = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-  ] as DayOfWeek[];
-
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-panel">
+      <div className="modal-panel !max-w-xl !max-h-[98vh] min-h-[600px]">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-base font-semibold text-slate-800">
@@ -303,52 +296,73 @@ export function EntryModal({
 
         <div className="space-y-4">
           {/* Batch */}
-          <div>
-            <label className="label">Batch</label>
-            <Combobox
-              id="modal-batch"
-              options={batches.map((b) => ({ value: b.id, label: b.name, color: b.color }))}
-              value={batchId}
-              onChange={handleBatchChange}
-              placeholder="Select batch…"
-              onAddNew={(q) => setQuickCreate({ type: 'batch', initial: q })}
-              addNewLabel="Add new batch"
-            />
-            {quickCreate?.type === 'batch' && (
-              <QuickCreate
-                type="batch"
-                initialName={quickCreate.initial}
-                onCreated={(id) => { handleBatchChange(id); setQuickCreate(null); }}
-                onCancel={() => setQuickCreate(null)}
+          {(!defaultBatchId && !existingEntry) && (
+            <div>
+              <label className="label">Batch</label>
+              <Combobox
+                id="modal-batch"
+                options={batches.map((b) => ({ value: b.id, label: b.name, color: b.color }))}
+                value={batchId}
+                onChange={handleBatchChange}
+                placeholder="Select batch…"
+                onAddNew={(q) => setQuickCreate({ type: 'batch', initial: q })}
+                addNewLabel="Add new batch"
               />
-            )}
-          </div>
+              {quickCreate?.type === 'batch' && (
+                <QuickCreate
+                  type="batch"
+                  initialName={quickCreate.initial}
+                  onCreated={(id) => { handleBatchChange(id); setQuickCreate(null); }}
+                  onCancel={() => setQuickCreate(null)}
+                />
+              )}
+            </div>
+          )}
 
           {/* Subject */}
           <div className={!batchId ? "opacity-50 pointer-events-none" : ""}>
             <label className="label">Subject {!batchId && "(Select a batch first)"}</label>
-            <Combobox
-              id="modal-subject"
-              options={filteredSubjects.map((s) => ({
-                value: s.id,
-                label: s.name,
-                sublabel: s.short_code,
-                color: s.color,
-              }))}
-              value={subjectId}
-              onChange={(v) => { setSubjectId(v as number); setConflict({ kind: 'none' }); }}
-              placeholder={batchId ? "Select subject…" : "Waiting for batch…"}
-              onAddNew={(q) => setQuickCreate({ type: 'subject', initial: q })}
-              addNewLabel="Add new subject"
-            />
+            <div className="flex flex-wrap gap-2">
+              {filteredSubjects.map((s) => {
+                const isSelected = subjectId === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { setSubjectId(s.id); setConflict({ kind: 'none' }); }}
+                    className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[100px]
+                      ${isSelected
+                        ? 'border-brand-500/60 ring-1 ring-brand-500/60'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    style={isSelected ? { borderColor: s.color, backgroundColor: `${s.color}15`, outlineColor: s.color } : {}}
+                  >
+                    <span className="text-xs font-bold" style={{ color: isSelected ? s.color : 'inherit' }}>{s.short_code}</span>
+                    <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{s.name}</span>
+                  </button>
+                );
+              })}
+              {batchId && (
+                <button
+                  type="button"
+                  onClick={() => setQuickCreate({ type: 'subject', initial: '' })}
+                  className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-brand-600 hover:border-brand-300 hover:bg-brand-50 transition-all text-xs min-h-[46px]"
+                >
+                  <Plus size={14} />
+                  <span>New Subject</span>
+                </button>
+              )}
+            </div>
             {quickCreate?.type === 'subject' && batchId && (
-              <QuickCreate
-                type="subject"
-                initialName={quickCreate.initial}
-                batchId={batchId}
-                onCreated={(id) => { setSubjectId(id); setQuickCreate(null); }}
-                onCancel={() => setQuickCreate(null)}
-              />
+              <div className="mt-3">
+                <QuickCreate
+                  type="subject"
+                  initialName={quickCreate.initial}
+                  batchId={batchId}
+                  onCreated={(id) => { setSubjectId(id); setQuickCreate(null); }}
+                  onCancel={() => setQuickCreate(null)}
+                />
+              </div>
             )}
           </div>
 
@@ -357,7 +371,11 @@ export function EntryModal({
             <label className="label">Faculty</label>
             <Combobox
               id="modal-faculty"
-              options={faculty.map((f) => ({ value: f.id, label: f.name }))}
+              options={faculty.map((f) => ({
+                value: f.id,
+                label: f.name,
+                sublabel: f.role === 'teaching_assistant' ? 'TA' : 'Prof.',
+              }))}
               value={facultyId}
               onChange={(v) => { setFacultyId(v as number); setConflict({ kind: 'none' }); }}
               placeholder="Select faculty…"
@@ -374,50 +392,7 @@ export function EntryModal({
             )}
           </div>
 
-          {/* Day */}
-          <div>
-            <label className="label">Day</label>
-            <div className="flex flex-wrap gap-1.5">
-              {DAY_OPTIONS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => { setDay(d); setConflict({ kind: 'none' }); }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
-                    ${day === d
-                      ? 'bg-brand-500/20 text-brand-700 border-brand-500/60'
-                      : 'text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                    }`}
-                >
-                  {d.slice(0, 3)}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          {/* Time Slot */}
-          <div>
-            <label className="label">Time Slot</label>
-            <div className="flex flex-wrap gap-1.5">
-              {nonBreakSlots.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => { setSlotId(s.id); setConflict({ kind: 'none' }); }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
-                    ${slotId === s.id
-                      ? 'bg-brand-500/20 text-brand-700 border-brand-500/60'
-                      : 'text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                    }`}
-                >
-                  {s.label}
-                  <span className="ml-1 opacity-60 text-[10px]">
-                    {fmtSlotRange(s.start_time, s.end_time)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Conflict / warning notifications */}
           {conflict.kind === 'hard' && (
