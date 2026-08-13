@@ -141,7 +141,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
       toast.success('Subject created');
       setShowForm(false);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed');
+      toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to create subject') : 'Failed');
     }
   }
 
@@ -195,7 +195,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
                   <span className="flex-1 text-sm font-medium text-slate-700">{s.name}</span>
                   <span className="text-[10px] font-mono text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 bg-white">{s.short_code}</span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     <button aria-label={`Edit subject ${s.name}`} onClick={() => { setEditing(s); setShowForm(false); }} className="text-slate-400 hover:text-brand-600 p-1"><Edit2 size={12} /></button>
                     <button aria-label={`Delete subject ${s.name}`} onClick={() => handleDelete(s)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={12} /></button>
                   </div>
@@ -226,7 +226,7 @@ export function BatchesPage() {
       toast.success('Batch created');
       setShowForm(false);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed to create');
+      toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to create batch') : 'Failed to create');
     }
   }
 
@@ -237,7 +237,7 @@ export function BatchesPage() {
       toast.success('Batch updated');
       setEditing(null);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed to update');
+      toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to update batch') : 'Failed to update');
     }
   }
 
@@ -250,7 +250,7 @@ export function BatchesPage() {
       qc.invalidateQueries({ queryKey: ['timetable-entries'] });
       toast.success('Batch deleted');
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed to delete');
+      toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to delete batch') : 'Failed to delete');
     }
   }
 
