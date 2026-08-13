@@ -159,9 +159,10 @@ export function EntryModal({
   const nonBreakSlots = slots.filter((s) => !s.is_break);
   const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
 
-  function handleBatchChange(newBatchId: number) {
-    if (newBatchId !== batchId) setSubjectId(null);
-    setBatchId(newBatchId);
+  function handleBatchChange(newBatchId: string | number) {
+    const id = newBatchId as number;
+    if (id !== batchId) setSubjectId(null);
+    setBatchId(id);
     setConflict({ kind: 'none' });
   }
 
