@@ -96,8 +96,15 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !shortCode.trim()) return;
+    
+    const hpw = Number(hoursPerWeek);
+    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw < 0) {
+      toast.error('Hours per week must be a non-negative integer (0 for unlimited).');
+      return;
+    }
+    
     setLoading(true);
-    try { await onSave({ batch_id: batchId, name: name.trim(), short_code: shortCode.trim().toUpperCase(), color, hours_per_week: parseInt(hoursPerWeek) || 0 }); }
+    try { await onSave({ batch_id: batchId, name: name.trim(), short_code: shortCode.trim().toUpperCase(), color, hours_per_week: hpw }); }
     finally { setLoading(false); }
   }
 
@@ -113,8 +120,8 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
           <input className="input text-sm uppercase" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} placeholder="e.g. PAIML" maxLength={10} />
         </div>
         <div>
-          <label className="label">Hrs/Week (0=unlimited)</label>
-          <input type="number" min="0" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
+          <label htmlFor="hpw-input" className="label">Hrs/Week (0=unlimited)</label>
+          <input id="hpw-input" type="number" min="0" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
         </div>
       </div>
       <div>

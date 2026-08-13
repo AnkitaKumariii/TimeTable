@@ -64,12 +64,17 @@ def _check_conflicts(
     time_slot_id: int,
     subject_id: int,
     exclude_entry_id: Optional[int] = None,
+    lock_subject: bool = False,
 ) -> EntryCheckResponse:
     """Run conflict + adjacency + limit checks. Returns structured result."""
 
     faculty = db.query(Faculty).filter(Faculty.id == faculty_id).first()
     current_slot = db.query(TimeSlot).filter(TimeSlot.id == time_slot_id).first()
-    subject = db.query(Subject).filter(Subject.id == subject_id).first()
+    
+    subject_q = db.query(Subject).filter(Subject.id == subject_id)
+    if lock_subject:
+        subject_q = subject_q.with_for_update()
+    subject = subject_q.first()
 
     if not faculty or not current_slot or not subject:
         return EntryCheckResponse(status="ok")
@@ -328,6 +333,7 @@ def create_entry(
         day=payload.day,
         time_slot_id=payload.time_slot_id,
         subject_id=payload.subject_id,
+        lock_subject=True,
     )
 
     # Hard conflict → block
@@ -407,6 +413,7 @@ def update_entry(
         time_slot_id=eff_slot_id,
         subject_id=eff_subject_id,
         exclude_entry_id=entry_id,
+        lock_subject=True,
     )
 
     if check.status == "conflict":
