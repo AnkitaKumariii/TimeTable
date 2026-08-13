@@ -100,6 +100,7 @@ class Subject(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     short_code: Mapped[str] = mapped_column(String(20), nullable=False)
     color: Mapped[str] = mapped_column(String(7), default="#0ea5e9", nullable=False)
+    hours_per_week: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4")
 
     batch: Mapped["Batch"] = relationship("Batch", back_populates="subjects")
     entries: Mapped[list["TimetableEntry"]] = relationship(

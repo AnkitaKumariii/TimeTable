@@ -29,6 +29,7 @@ export interface Subject {
   name: string;
   short_code: string;
   color: string;
+  hours_per_week: number;
 }
 
 export type FacultyRole = 'professor' | 'teaching_assistant';
@@ -93,8 +94,8 @@ export interface ActiveDaysOut {
 
 export interface BatchCreate { name: string; color: string; is_active?: boolean }
 export interface BatchUpdate { name?: string; color?: string; is_active?: boolean }
-export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string }
-export interface SubjectUpdate { name?: string; short_code?: string; color?: string }
+export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string; hours_per_week: number }
+export interface SubjectUpdate { name?: string; short_code?: string; color?: string; hours_per_week?: number }
 export interface FacultyCreate { name: string; email?: string; role?: FacultyRole }
 export interface FacultyUpdate { name?: string; email?: string; role?: FacultyRole }
 export interface TimeSlotCreate { label: string; start_time: string; end_time: string; sort_order: number; is_break?: boolean }

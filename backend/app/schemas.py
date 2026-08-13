@@ -63,12 +63,14 @@ class SubjectCreate(BaseModel):
     name: str
     short_code: str
     color: str = "#0ea5e9"
+    hours_per_week: int = 4
 
 
 class SubjectUpdate(BaseModel):
     name: Optional[str] = None
     short_code: Optional[str] = None
     color: Optional[str] = None
+    hours_per_week: Optional[int] = None
 
 
 class SubjectOut(_ORM):
@@ -77,6 +79,7 @@ class SubjectOut(_ORM):
     name: str
     short_code: str
     color: str
+    hours_per_week: int
 
 
 # ── Faculty ────────────────────────────────────────────────────────────────────

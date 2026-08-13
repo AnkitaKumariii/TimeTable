@@ -7,7 +7,7 @@ import axios from 'axios';
 import {
   createBatch, createEntry, createFaculty, createSubject,
   deleteEntry, getBatches, getFaculty, getSubjects,
-  updateEntry,
+  updateEntry, getEntries,
 } from '../api';
 import type {
   Batch, ConflictingEntry, DayOfWeek, FacultyMember,
@@ -41,7 +41,7 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
         qc.invalidateQueries({ queryKey: ['batches'] });
       } else if (type === 'subject') {
         if (!batchId) throw new Error("Batch required");
-        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color });
+        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: 4 });
         qc.invalidateQueries({ queryKey: ['subjects'] });
       } else {
         created = await createFaculty({ name });
@@ -139,6 +139,7 @@ export function EntryModal({
   const { data: batches = [] } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
   const { data: subjects = [] } = useQuery({ queryKey: ['subjects'], queryFn: () => getSubjects() });
   const { data: faculty = [] } = useQuery({ queryKey: ['faculty'], queryFn: getFaculty });
+  const { data: entries = [] } = useQuery({ queryKey: ['timetable-entries'], queryFn: () => getEntries() });
 
   const [batchId, setBatchId] = useState<number | null>(existingEntry?.batch_id ?? defaultBatchId ?? null);
   const [subjectId, setSubjectId] = useState<number | null>(existingEntry?.subject_id ?? null);
@@ -325,6 +326,9 @@ export function EntryModal({
             <div className="flex flex-wrap gap-2">
               {filteredSubjects.map((s) => {
                 const isSelected = subjectId === s.id;
+                const usageCount = entries.filter((e) => e.subject_id === s.id && (!existingEntry || e.id !== existingEntry.id)).length;
+                const isOverLimit = s.hours_per_week > 0 && usageCount >= s.hours_per_week;
+
                 return (
                   <button
                     key={s.id}
@@ -333,12 +337,17 @@ export function EntryModal({
                     className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[100px]
                       ${isSelected
                         ? 'border-brand-500/60 ring-1 ring-brand-500/60'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        : isOverLimit
+                          ? 'border-red-200 bg-red-50/30 hover:border-red-300'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     style={isSelected ? { borderColor: s.color, backgroundColor: `${s.color}15`, outlineColor: s.color } : {}}
                   >
                     <span className="text-xs font-bold" style={{ color: isSelected ? s.color : 'inherit' }}>{s.short_code}</span>
                     <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{s.name}</span>
+                    <span className={`text-[9px] mt-1 px-1.5 py-0.5 rounded font-mono ${isOverLimit && !isSelected ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
+                      {s.hours_per_week > 0 ? `${usageCount}/${s.hours_per_week} hrs` : `${usageCount} hrs`}
+                    </span>
                   </button>
                 );
               })}

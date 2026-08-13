@@ -62,15 +62,32 @@ def _check_conflicts(
     batch_id: int,
     day: DayOfWeek,
     time_slot_id: int,
+    subject_id: int,
     exclude_entry_id: Optional[int] = None,
 ) -> EntryCheckResponse:
-    """Run conflict + adjacency checks.  Returns structured result."""
+    """Run conflict + adjacency + limit checks. Returns structured result."""
 
     faculty = db.query(Faculty).filter(Faculty.id == faculty_id).first()
     current_slot = db.query(TimeSlot).filter(TimeSlot.id == time_slot_id).first()
+    subject = db.query(Subject).filter(Subject.id == subject_id).first()
 
-    if not faculty or not current_slot:
+    if not faculty or not current_slot or not subject:
         return EntryCheckResponse(status="ok")
+
+    # ── 0. Weekly Limit Check ──────────────────────────────────────────────────
+    if subject.hours_per_week > 0:
+        usage_q = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id)
+        if exclude_entry_id:
+            usage_q = usage_q.filter(TimetableEntry.id != exclude_entry_id)
+        usage_count = usage_q.count()
+        if usage_count >= subject.hours_per_week:
+            return EntryCheckResponse(
+                status="conflict",
+                message=(
+                    f"⚠️ Cannot add: {subject.name} exceeds its limit of {subject.hours_per_week} hours per week. "
+                    f"(Currently allotted: {usage_count})"
+                )
+            )
 
     # ── 1. Hard conflict: same faculty + same slot + DIFFERENT batch ────────────
     q = (
@@ -260,6 +277,7 @@ def check_entry(
         batch_id=payload.batch_id,
         day=payload.day,
         time_slot_id=payload.time_slot_id,
+        subject_id=payload.subject_id,
     )
 
 
@@ -309,6 +327,7 @@ def create_entry(
         batch_id=payload.batch_id,
         day=payload.day,
         time_slot_id=payload.time_slot_id,
+        subject_id=payload.subject_id,
     )
 
     # Hard conflict → block
@@ -386,6 +405,7 @@ def update_entry(
         batch_id=eff_batch_id,
         day=eff_day,
         time_slot_id=eff_slot_id,
+        subject_id=eff_subject_id,
         exclude_entry_id=entry_id,
     )
 
