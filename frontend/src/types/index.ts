@@ -31,10 +31,13 @@ export interface Subject {
   color: string;
 }
 
+export type FacultyRole = 'professor' | 'teaching_assistant';
+
 export interface FacultyMember {
   id: number;
   name: string;
   email?: string | null;
+  role: FacultyRole;
 }
 
 export interface TimeSlot {
@@ -92,8 +95,8 @@ export interface BatchCreate { name: string; color: string; is_active?: boolean 
 export interface BatchUpdate { name?: string; color?: string; is_active?: boolean }
 export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string }
 export interface SubjectUpdate { name?: string; short_code?: string; color?: string }
-export interface FacultyCreate { name: string; email?: string }
-export interface FacultyUpdate { name?: string; email?: string }
+export interface FacultyCreate { name: string; email?: string; role?: FacultyRole }
+export interface FacultyUpdate { name?: string; email?: string; role?: FacultyRole }
 export interface TimeSlotCreate { label: string; start_time: string; end_time: string; sort_order: number; is_break?: boolean }
 export interface TimeSlotUpdate { label?: string; start_time?: string; end_time?: string; sort_order?: number; is_break?: boolean }
 export interface EntryCreate { batch_id: number; subject_id: number; faculty_id: number; day: DayOfWeek; time_slot_id: number }

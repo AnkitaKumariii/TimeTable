@@ -120,7 +120,7 @@ export function TimetablePage() {
           entries={entries}
           slots={slots}
           activeDays={activeDays}
-
+          batches={batches}
           filterBatchId={filterBatch === 'all' ? null : filterBatch}
         />
       )}

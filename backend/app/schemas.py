@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.models import DayOfWeek, UserRole
+from app.models import DayOfWeek, FacultyRole, UserRole
 
 
 # ── Shared config ──────────────────────────────────────────────────────────────
@@ -84,17 +84,20 @@ class SubjectOut(_ORM):
 class FacultyCreate(BaseModel):
     name: str
     email: Optional[str] = None
+    role: FacultyRole = FacultyRole.professor
 
 
 class FacultyUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
+    role: Optional[FacultyRole] = None
 
 
 class FacultyOut(_ORM):
     id: int
     name: str
     email: Optional[str] = None
+    role: FacultyRole
 
 
 # ── TimeSlot ───────────────────────────────────────────────────────────────────

@@ -72,4 +72,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    pass
+    raise NotImplementedError(
+        "This revision is a destructive pre-production reset and cannot be downgraded. "
+        "Restore from a backup instead."
+    )
