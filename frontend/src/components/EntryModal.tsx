@@ -29,6 +29,7 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
   const [name, setName] = useState(initialName);
   const [shortCode, setShortCode] = useState('');
   const [color, setColor] = useState('#6366f1');
+  const [hoursPerWeek, setHoursPerWeek] = useState('4');
   const [loading, setLoading] = useState(false);
   const qc = useQueryClient();
 
@@ -41,7 +42,12 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
         qc.invalidateQueries({ queryKey: ['batches'] });
       } else if (type === 'subject') {
         if (!batchId) throw new Error("Batch required");
-        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: 4 });
+        const hpw = Number(hoursPerWeek);
+        if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw <= 0) {
+          toast.error('Hours per week must be a positive integer.');
+          return;
+        }
+        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: hpw });
         qc.invalidateQueries({ queryKey: ['subjects'] });
       } else {
         created = await createFaculty({ name });
@@ -70,13 +76,26 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
           autoFocus
         />
         {type === 'subject' && (
-          <input
-            className="input text-xs h-8"
-            value={shortCode}
-            onChange={(e) => setShortCode(e.target.value.toUpperCase())}
-            placeholder="Short code (e.g. PAIML)…"
-            maxLength={10}
-          />
+          <div className="space-y-2">
+            <input
+              className="input text-xs h-8 w-full"
+              value={shortCode}
+              onChange={(e) => setShortCode(e.target.value.toUpperCase())}
+              placeholder="Short code (e.g. PAIML)…"
+              maxLength={10}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="qc-hpw" className="text-xs text-slate-500">Hours per week</label>
+              <input
+                id="qc-hpw"
+                type="number"
+                min="1"
+                className="input text-xs h-8 w-16"
+                value={hoursPerWeek}
+                onChange={(e) => setHoursPerWeek(e.target.value)}
+              />
+            </div>
+          </div>
         )}
         {type !== 'faculty' && (
           <div className="flex items-center gap-2">
@@ -327,7 +346,7 @@ export function EntryModal({
               {filteredSubjects.map((s) => {
                 const isSelected = subjectId === s.id;
                 const usageCount = entries.filter((e) => e.subject_id === s.id && (!existingEntry || e.id !== existingEntry.id)).length;
-                const isOverLimit = s.hours_per_week > 0 && usageCount >= s.hours_per_week;
+                const isOverLimit = usageCount >= s.hours_per_week;
 
                 return (
                   <button
@@ -346,7 +365,7 @@ export function EntryModal({
                     <span className="text-xs font-bold" style={{ color: isSelected ? s.color : 'inherit' }}>{s.short_code}</span>
                     <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{s.name}</span>
                     <span className={`text-[9px] mt-1 px-1.5 py-0.5 rounded font-mono ${isOverLimit && !isSelected ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
-                      {s.hours_per_week > 0 ? `${usageCount}/${s.hours_per_week} hrs` : `${usageCount} hrs`}
+                      {usageCount}/{s.hours_per_week} hrs
                     </span>
                   </button>
                 );

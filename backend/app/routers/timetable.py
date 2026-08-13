@@ -80,19 +80,18 @@ def _check_conflicts(
         return EntryCheckResponse(status="ok")
 
     # ── 0. Weekly Limit Check ──────────────────────────────────────────────────
-    if subject.hours_per_week > 0:
-        usage_q = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id)
-        if exclude_entry_id:
-            usage_q = usage_q.filter(TimetableEntry.id != exclude_entry_id)
-        usage_count = usage_q.count()
-        if usage_count >= subject.hours_per_week:
-            return EntryCheckResponse(
-                status="conflict",
-                message=(
-                    f"⚠️ Cannot add: {subject.name} exceeds its limit of {subject.hours_per_week} hours per week. "
-                    f"(Currently allotted: {usage_count})"
-                )
+    usage_q = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id)
+    if exclude_entry_id:
+        usage_q = usage_q.filter(TimetableEntry.id != exclude_entry_id)
+    usage_count = usage_q.count()
+    if usage_count >= subject.hours_per_week:
+        return EntryCheckResponse(
+            status="conflict",
+            message=(
+                f"⚠️ Cannot add: {subject.name} exceeds its limit of {subject.hours_per_week} hours per week. "
+                f"(Currently allotted: {usage_count})"
             )
+        )
 
     # ── 1. Hard conflict: same faculty + same slot + DIFFERENT batch ────────────
     q = (

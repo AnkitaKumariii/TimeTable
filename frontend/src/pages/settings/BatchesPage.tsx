@@ -98,8 +98,8 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
     if (!name.trim() || !shortCode.trim()) return;
     
     const hpw = Number(hoursPerWeek);
-    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw < 0) {
-      toast.error('Hours per week must be a non-negative integer (0 for unlimited).');
+    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw <= 0) {
+      toast.error('Hours per week must be a positive integer.');
       return;
     }
     
@@ -120,8 +120,8 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
           <input className="input text-sm uppercase" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} placeholder="e.g. PAIML" maxLength={10} />
         </div>
         <div>
-          <label htmlFor="hpw-input" className="label">Hrs/Week (0=unlimited)</label>
-          <input id="hpw-input" type="number" min="0" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
+          <label htmlFor="hpw-input" className="label">Hrs/Week</label>
+          <input id="hpw-input" type="number" min="1" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
         </div>
       </div>
       <div>
@@ -207,7 +207,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
                   <span className="flex-1 text-sm font-medium text-slate-700">{s.name}</span>
                   <span className="text-[10px] font-mono text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 bg-white">{s.short_code}</span>
-                  <span className="text-[10px] text-slate-500">{s.hours_per_week > 0 ? `${s.hours_per_week} hrs/wk` : 'No limit'}</span>
+                  <span className="text-[10px] text-slate-500">{s.hours_per_week} hrs/wk</span>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     <button aria-label={`Edit subject ${s.name}`} onClick={() => { setEditing(s); setShowForm(false); }} className="text-slate-400 hover:text-brand-600 p-1"><Edit2 size={12} /></button>
                     <button aria-label={`Delete subject ${s.name}`} onClick={() => handleDelete(s)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={12} /></button>
