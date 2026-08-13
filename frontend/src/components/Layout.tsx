@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  BookOpen, CalendarDays, ChevronLeft, ChevronRight,
+  CalendarDays, ChevronLeft, ChevronRight,
   Clock, GraduationCap, LogOut, Settings, Users,
 } from 'lucide-react';
 
