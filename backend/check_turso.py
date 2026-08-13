@@ -21,7 +21,7 @@ auth = os.environ["TURSO_AUTH_TOKEN"]
 # The driver expects the raw libsql:// URL (not the https:// variant)
 conn = libsql.connect(database=url, auth_token=auth)
 cursor = conn.cursor()
-cursor.execute("SELECT label FROM time_slots")
+cursor.execute("SELECT label FROM time_slots ORDER BY sort_order")
 rows = cursor.fetchall()
 print(f"FOUND {len(rows)} ROWS IN TURSO DIRECTLY:")
 for r in rows:

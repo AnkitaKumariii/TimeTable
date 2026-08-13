@@ -37,6 +37,11 @@ class DayOfWeek(str, enum.Enum):
     Saturday = "Saturday"
 
 
+class FacultyRole(str, enum.Enum):
+    professor = "professor"
+    teaching_assistant = "teaching_assistant"
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class User(Base):
@@ -98,7 +103,7 @@ class Subject(Base):
 
     batch: Mapped["Batch"] = relationship("Batch", back_populates="subjects")
     entries: Mapped[list["TimetableEntry"]] = relationship(
-        "TimetableEntry", back_populates="subject"
+        "TimetableEntry", back_populates="subject", cascade="all, delete-orphan"
     )
 
 
@@ -110,6 +115,9 @@ class Faculty(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    role: Mapped[FacultyRole] = mapped_column(
+        Enum(FacultyRole, name="faculty_role"), default=FacultyRole.professor, nullable=False
+    )
 
     # FK to users – null until multi-faculty login is enabled
     user_id: Mapped[int | None] = mapped_column(
