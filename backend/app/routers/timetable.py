@@ -284,6 +284,14 @@ def create_entry(
         if not db.query(model).filter(model.id == fid).first():
             raise HTTPException(status_code=404, detail=f"{label} not found")
 
+    # Validate subject belongs to the selected batch
+    subject = db.query(Subject).filter(Subject.id == payload.subject_id).first()
+    if subject.batch_id != payload.batch_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Subject does not belong to the selected batch",
+        )
+
     # Check unique constraint (batch + day + slot)
     existing = db.query(TimetableEntry).filter(
         TimetableEntry.batch_id == payload.batch_id,
@@ -358,8 +366,19 @@ def update_entry(
     # Determine effective values for conflict check
     eff_faculty_id = update_data.get("faculty_id", entry.faculty_id)
     eff_batch_id = update_data.get("batch_id", entry.batch_id)
+    eff_subject_id = update_data.get("subject_id", entry.subject_id)
     eff_day = update_data.get("day", entry.day)
     eff_slot_id = update_data.get("time_slot_id", entry.time_slot_id)
+
+    # Validate subject belongs to the effective batch
+    eff_subject = db.query(Subject).filter(Subject.id == eff_subject_id).first()
+    if not eff_subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    if eff_subject.batch_id != eff_batch_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Subject does not belong to the selected batch",
+        )
 
     check = _check_conflicts(
         db,

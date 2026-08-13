@@ -59,6 +59,7 @@ class BatchOut(_ORM):
 # ── Subject ────────────────────────────────────────────────────────────────────
 
 class SubjectCreate(BaseModel):
+    batch_id: int
     name: str
     short_code: str
     color: str = "#0ea5e9"
@@ -72,6 +73,7 @@ class SubjectUpdate(BaseModel):
 
 class SubjectOut(_ORM):
     id: int
+    batch_id: int
     name: str
     short_code: str
     color: str

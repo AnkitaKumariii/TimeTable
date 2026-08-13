@@ -56,12 +56,7 @@ export function Layout() {
             <GraduationCap size={16} />
             {!collapsed && 'Batches'}
           </NavLink>
-          <NavLink to="/settings/subjects" className={({ isActive }) =>
-            `nav-link ${isActive ? 'active' : ''} ${collapsed ? 'justify-center px-2' : ''}`
-          }>
-            <BookOpen size={16} />
-            {!collapsed && 'Subjects'}
-          </NavLink>
+
           <NavLink to="/settings/faculty" className={({ isActive }) =>
             `nav-link ${isActive ? 'active' : ''} ${collapsed ? 'justify-center px-2' : ''}`
           }>

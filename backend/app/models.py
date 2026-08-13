@@ -75,18 +75,28 @@ class Batch(Base):
     entries: Mapped[list["TimetableEntry"]] = relationship(
         "TimetableEntry", back_populates="batch", cascade="all, delete-orphan"
     )
+    subjects: Mapped[list["Subject"]] = relationship(
+        "Subject", back_populates="batch", cascade="all, delete-orphan"
+    )
 
 
 class Subject(Base):
-    """A reusable subject / course."""
+    """A subject / course specific to a batch."""
 
     __tablename__ = "subjects"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "short_code", name="uq_batch_subject_code"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("batches.id"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    short_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    short_code: Mapped[str] = mapped_column(String(20), nullable=False)
     color: Mapped[str] = mapped_column(String(7), default="#0ea5e9", nullable=False)
 
+    batch: Mapped["Batch"] = relationship("Batch", back_populates="subjects")
     entries: Mapped[list["TimetableEntry"]] = relationship(
         "TimetableEntry", back_populates="subject"
     )

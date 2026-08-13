@@ -4,7 +4,7 @@ import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { TimetablePage } from './pages/TimetablePage';
 import { BatchesPage } from './pages/settings/BatchesPage';
-import { SubjectsPage } from './pages/settings/SubjectsPage';
+
 import { FacultyPage } from './pages/settings/FacultyPage';
 import { TimeSlotsPage } from './pages/settings/TimeSlotsPage';
 import { DaysPage } from './pages/settings/DaysPage';
@@ -22,7 +22,7 @@ function SettingsLayout() {
         <Routes>
           <Route index element={<Navigate to="batches" replace />} />
           <Route path="batches" element={<BatchesPage />} />
-          <Route path="subjects" element={<SubjectsPage />} />
+
           <Route path="faculty" element={<FacultyPage />} />
           <Route path="time-slots" element={<TimeSlotsPage />} />
           <Route path="days" element={<DaysPage />} />
