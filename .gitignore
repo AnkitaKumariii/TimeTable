@@ -37,3 +37,7 @@ alembic/versions/*.pyc
 node_modules/
 frontend/dist/
 frontend/.env.local
+
+# Runtime token files (never commit)
+token.json
+*.token.json

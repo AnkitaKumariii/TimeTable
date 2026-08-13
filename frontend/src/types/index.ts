@@ -25,6 +25,7 @@ export interface Batch {
 
 export interface Subject {
   id: number;
+  batch_id: number;
   name: string;
   short_code: string;
   color: string;
@@ -89,7 +90,7 @@ export interface ActiveDaysOut {
 
 export interface BatchCreate { name: string; color: string; is_active?: boolean }
 export interface BatchUpdate { name?: string; color?: string; is_active?: boolean }
-export interface SubjectCreate { name: string; short_code: string; color: string }
+export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string }
 export interface SubjectUpdate { name?: string; short_code?: string; color?: string }
 export interface FacultyCreate { name: string; email?: string }
 export interface FacultyUpdate { name?: string; email?: string }

@@ -32,8 +32,8 @@ export const deleteBatch = (id: number) =>
   apiClient.delete(`/batches/${id}`);
 
 // ── Subjects ──────────────────────────────────────────────────────────────────
-export const getSubjects = () =>
-  apiClient.get<Subject[]>('/subjects').then((r) => r.data);
+export const getSubjects = (params?: { batch_id?: number }) =>
+  apiClient.get<Subject[]>('/subjects', { params }).then((r) => r.data);
 
 export const createSubject = (data: SubjectCreate) =>
   apiClient.post<Subject>('/subjects', data).then((r) => r.data);

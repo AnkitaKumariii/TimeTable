@@ -21,11 +21,12 @@ import { fmtSlotRange } from '../lib/utils';
 interface QuickCreateProps {
   type: 'batch' | 'subject' | 'faculty';
   initialName: string;
+  batchId?: number;
   onCreated: (id: number) => void;
   onCancel: () => void;
 }
 
-function QuickCreate({ type, initialName, onCreated, onCancel }: QuickCreateProps) {
+function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickCreateProps) {
   const [name, setName] = useState(initialName);
   const [shortCode, setShortCode] = useState('');
   const [color, setColor] = useState('#6366f1');
@@ -40,7 +41,8 @@ function QuickCreate({ type, initialName, onCreated, onCancel }: QuickCreateProp
         created = await createBatch({ name, color });
         qc.invalidateQueries({ queryKey: ['batches'] });
       } else if (type === 'subject') {
-        created = await createSubject({ name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color });
+        if (!batchId) throw new Error("Batch required");
+        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color });
         qc.invalidateQueries({ queryKey: ['subjects'] });
       } else {
         created = await createFaculty({ name });
@@ -136,7 +138,7 @@ export function EntryModal({
   const qc = useQueryClient();
 
   const { data: batches = [] } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
-  const { data: subjects = [] } = useQuery({ queryKey: ['subjects'], queryFn: getSubjects });
+  const { data: subjects = [] } = useQuery({ queryKey: ['subjects'], queryFn: () => getSubjects() });
   const { data: faculty = [] } = useQuery({ queryKey: ['faculty'], queryFn: getFaculty });
   const { data: slots = [] } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
 
@@ -155,6 +157,13 @@ export function EntryModal({
   const isEditing = !!existingEntry;
 
   const nonBreakSlots = slots.filter((s) => !s.is_break);
+  const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
+
+  function handleBatchChange(newBatchId: number) {
+    if (newBatchId !== batchId) setSubjectId(null);
+    setBatchId(newBatchId);
+    setConflict({ kind: 'none' });
+  }
 
   async function save(force = false) {
     if (!isComplete) return;
@@ -299,7 +308,7 @@ export function EntryModal({
               id="modal-batch"
               options={batches.map((b) => ({ value: b.id, label: b.name, color: b.color }))}
               value={batchId}
-              onChange={(v) => { setBatchId(v as number); setConflict({ kind: 'none' }); }}
+              onChange={handleBatchChange}
               placeholder="Select batch…"
               onAddNew={(q) => setQuickCreate({ type: 'batch', initial: q })}
               addNewLabel="Add new batch"
@@ -308,18 +317,18 @@ export function EntryModal({
               <QuickCreate
                 type="batch"
                 initialName={quickCreate.initial}
-                onCreated={(id) => { setBatchId(id); setQuickCreate(null); }}
+                onCreated={(id) => { handleBatchChange(id); setQuickCreate(null); }}
                 onCancel={() => setQuickCreate(null)}
               />
             )}
           </div>
 
           {/* Subject */}
-          <div>
-            <label className="label">Subject</label>
+          <div className={!batchId ? "opacity-50 pointer-events-none" : ""}>
+            <label className="label">Subject {!batchId && "(Select a batch first)"}</label>
             <Combobox
               id="modal-subject"
-              options={subjects.map((s) => ({
+              options={filteredSubjects.map((s) => ({
                 value: s.id,
                 label: s.name,
                 sublabel: s.short_code,
@@ -327,14 +336,15 @@ export function EntryModal({
               }))}
               value={subjectId}
               onChange={(v) => { setSubjectId(v as number); setConflict({ kind: 'none' }); }}
-              placeholder="Select subject…"
+              placeholder={batchId ? "Select subject…" : "Waiting for batch…"}
               onAddNew={(q) => setQuickCreate({ type: 'subject', initial: q })}
               addNewLabel="Add new subject"
             />
-            {quickCreate?.type === 'subject' && (
+            {quickCreate?.type === 'subject' && batchId && (
               <QuickCreate
                 type="subject"
                 initialName={quickCreate.initial}
+                batchId={batchId}
                 onCreated={(id) => { setSubjectId(id); setQuickCreate(null); }}
                 onCancel={() => setQuickCreate(null)}
               />
