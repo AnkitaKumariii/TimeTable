@@ -45,6 +45,7 @@ The database follows a relational model centered around timetable entries.
 erDiagram
     users ||--o{ timetable_entries : "may manage"
     batches ||--o{ timetable_entries : has
+    batches ||--o{ subjects : has
     subjects ||--o{ timetable_entries : includes
     faculty ||--o{ timetable_entries : teaches
     time_slots ||--o{ timetable_entries : occurs_at
@@ -62,14 +63,19 @@ erDiagram
 
     subjects {
         int id PK
+        int batch_id FK
         string name
         string short_code
         string color
+        int hours_per_week
     }
 
     faculty {
         int id PK
         string name
+        string email
+        string role "professor | teaching_assistant"
+        int user_id FK
     }
 
     time_slots {
@@ -107,8 +113,9 @@ sequenceDiagram
 
     User->>Frontend: Saves Timetable Entry
     Frontend->>Backend: POST /timetable-entries
-    Backend->>DB: Check Faculty Schedule
-    DB-->>Backend: Existing Faculty Entries
+    Backend->>DB: Lock Subject Row (FOR UPDATE)
+    Backend->>DB: Check Faculty Schedule & Subject Limits
+    DB-->>Backend: Existing Faculty & Subject Entries
 
     alt Hard Conflict (Same time slot, different batch)
         Backend-->>Frontend: HTTP 409 (Conflict)

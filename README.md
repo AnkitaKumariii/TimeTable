@@ -14,7 +14,8 @@ NitaTime simplifies scheduling with intuitive interfaces, intelligent conflict d
 - **⚠️ Intelligent Conflict Detection**:
   - *Hard Conflicts*: Prevents assigning the same faculty to different batches at the exact same time.
   - *Soft Warnings*: Alerts if a faculty member has consecutive classes, allowing an optional override.
-- **⚙️ Comprehensive Settings**: Easily configure Batches, Subjects, Faculty, Active Days, and Time Slots from the UI.
+- **📊 Subject Limits**: Enforces weekly hour limits for subjects to prevent over-scheduling, safely backed by row-level locking.
+- **⚙️ Comprehensive Settings**: Easily configure Batches (with their specific Subjects), Faculty (with Roles), Active Days, and Time Slots from the UI.
 - **⚡ Optimistic Concurrency**: Ensures multiple sessions don't overwrite each other's changes.
 - **🐳 Unified Deployment**: Delivered as a single multi-stage Docker container serving both the API and static frontend assets.
 
@@ -154,7 +155,7 @@ TimeTable/
     └── src/
         ├── api/         # API client functions
         ├── components/  # Grid, Modal, ConflictNotification, etc.
-        ├── pages/       # TimetablePage & Settings Pages (Batches, Subjects, Faculty, etc.)
+        ├── pages/       # TimetablePage & Settings Pages (Batches, Faculty, etc.)
         ├── types/       # TypeScript types
         └── lib/         # Utilities
 ```
