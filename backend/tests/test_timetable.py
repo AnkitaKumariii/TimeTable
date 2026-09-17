@@ -20,12 +20,19 @@ def test_add_timetable_entry(auth_client):
     })
     slot_id = slot_res.json()["id"]
     
+    room_res = auth_client.post("/api/rooms", json={
+        "name": "Room A",
+        "capacity": 50
+    })
+    room_id = room_res.json()["id"]
+    
     response = auth_client.post("/api/timetable/entries", json={
         "batch_id": batch_id,
         "subject_id": sub_id,
         "faculty_id": fac_id,
         "day": "Monday",
-        "time_slot_id": slot_id
+        "time_slot_id": slot_id,
+        "room_id": room_id
     })
     
     assert response.status_code == 201
@@ -53,12 +60,19 @@ def test_list_timetable_entries(auth_client):
     })
     slot_id = slot_res.json()["id"]
     
+    room_res = auth_client.post("/api/rooms", json={
+        "name": "Room B",
+        "capacity": 30
+    })
+    room_id = room_res.json()["id"]
+    
     create_res = auth_client.post("/api/timetable/entries", json={
         "batch_id": batch_id,
         "subject_id": sub_id,
         "faculty_id": fac_id,
         "day": "Tuesday",
-        "time_slot_id": slot_id
+        "time_slot_id": slot_id,
+        "room_id": room_id
     })
     entry_id = create_res.json()["entry"]["id"]
 

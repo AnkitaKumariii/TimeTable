@@ -104,6 +104,7 @@ def _check_conflicts(
             joinedload(TimetableEntry.batch),
             joinedload(TimetableEntry.subject),
             joinedload(TimetableEntry.time_slot),
+            joinedload(TimetableEntry.room),
         )
         .filter(
             TimetableEntry.faculty_id == faculty_id,
@@ -128,7 +129,7 @@ def _check_conflicts(
                 subject=conflict.subject.name,
                 time_slot=_slot_label(conflict.time_slot),
                 day=conflict.day.value,
-                room=room.name,
+                room=conflict.room.name,
             ),
         )
 
@@ -184,6 +185,7 @@ def _check_conflicts(
                 joinedload(TimetableEntry.batch),
                 joinedload(TimetableEntry.subject),
                 joinedload(TimetableEntry.time_slot),
+                joinedload(TimetableEntry.room),
             )
             .filter(
                 TimetableEntry.faculty_id == faculty_id,
@@ -213,7 +215,7 @@ def _check_conflicts(
                         subject=adj.subject.name,
                         time_slot=_slot_label(prev_slot),
                         day=adj.day.value,
-                        room=room.name,
+                        room=adj.room.name,
                     ),
                 )
 
@@ -234,6 +236,7 @@ def _check_conflicts(
                 joinedload(TimetableEntry.batch),
                 joinedload(TimetableEntry.subject),
                 joinedload(TimetableEntry.time_slot),
+                joinedload(TimetableEntry.room),
             )
             .filter(
                 TimetableEntry.faculty_id == faculty_id,
@@ -259,7 +262,7 @@ def _check_conflicts(
                     subject=adj2.subject.name,
                     time_slot=_slot_label(next_slot),
                     day=adj2.day.value,
-                    room=room.name,
+                    room=adj2.room.name,
                 ),
             )
 
@@ -440,6 +443,10 @@ def update_entry(
     eff_day = update_data.get("day", entry.day)
     eff_slot_id = update_data.get("time_slot_id", entry.time_slot_id)
     eff_room_id = update_data.get("room_id", entry.room_id)
+
+    # Validate room exists
+    if not db.query(Room).filter(Room.id == eff_room_id).first():
+        raise HTTPException(status_code=404, detail="Room not found")
 
     # Validate subject belongs to the effective batch
     eff_subject = db.query(Subject).filter(Subject.id == eff_subject_id).first()
