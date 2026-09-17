@@ -5,9 +5,10 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 import {
   getBatches, createBatch, updateBatch, deleteBatch,
-  getSubjects, createSubject, updateSubject, deleteSubject
+  getSubjects, createSubject, updateSubject, deleteSubject,
+  getBatchGroups, createBatchGroup, updateBatchGroup, deleteBatchGroup
 } from '../../api';
-import type { Batch, BatchCreate, Subject, SubjectCreate } from '../../types';
+import type { Batch, BatchCreate, Subject, SubjectCreate, SubjectType, BatchGroup } from '../../types';
 import { PRESET_COLORS } from '../../lib/utils';
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
@@ -91,6 +92,7 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
   const [shortCode, setShortCode] = useState(initial?.short_code ?? '');
   const [color, setColor] = useState(initial?.color ?? '#0ea5e9');
   const [hoursPerWeek, setHoursPerWeek] = useState(initial?.hours_per_week?.toString() ?? '4');
+  const [type, setType] = useState<SubjectType>(initial?.type ?? 'theory');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -104,7 +106,7 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
     }
     
     setLoading(true);
-    try { await onSave({ batch_id: batchId, name: name.trim(), short_code: shortCode.trim().toUpperCase(), color, hours_per_week: hpw }); }
+    try { await onSave({ batch_id: batchId, name: name.trim(), short_code: shortCode.trim().toUpperCase(), color, hours_per_week: hpw, type }); }
     finally { setLoading(false); }
   }
 
@@ -122,6 +124,13 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
         <div>
           <label htmlFor="hpw-input" className="label">Hrs/Week</label>
           <input id="hpw-input" type="number" min="1" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Type</label>
+          <select className="input text-sm" value={type} onChange={(e) => setType(e.target.value as SubjectType)}>
+            <option value="theory">Theory</option>
+            <option value="lab">Lab</option>
+          </select>
         </div>
       </div>
       <div>
@@ -208,6 +217,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
                   <span className="flex-1 text-sm font-medium text-slate-700">{s.name}</span>
                   <span className="text-[10px] font-mono text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 bg-white">{s.short_code}</span>
                   <span className="text-[10px] text-slate-500">{s.hours_per_week} hrs/wk</span>
+                  <span className="text-[10px] uppercase font-semibold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-100">{s.type}</span>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     <button aria-label={`Edit subject ${s.name}`} onClick={() => { setEditing(s); setShowForm(false); }} className="text-slate-400 hover:text-brand-600 p-1"><Edit2 size={12} /></button>
                     <button aria-label={`Delete subject ${s.name}`} onClick={() => handleDelete(s)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={12} /></button>
@@ -222,13 +232,109 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
   );
 }
 
+
+function BatchGroupsPanel({ batchId }: { batchId: number }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<BatchGroup | null>(null);
+  const [name, setName] = useState('');
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['batch-groups', batchId],
+    queryFn: () => getBatchGroups(batchId),
+  });
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    try {
+      if (editing) {
+        await updateBatchGroup(batchId, editing.id, { name: name.trim() });
+        toast.success('Group updated');
+      } else {
+        await createBatchGroup(batchId, { name: name.trim() });
+        toast.success('Group created');
+      }
+      qc.invalidateQueries({ queryKey: ['batch-groups', batchId] });
+      qc.invalidateQueries({ queryKey: ['timetable-entries'] });
+      setShowForm(false);
+      setEditing(null);
+      setName('');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        toast.error(err.response?.data?.detail || 'Failed to save group');
+      } else {
+        toast.error('Failed to save group');
+      }
+    }
+  }
+
+  async function handleDelete(group: BatchGroup) {
+    if (!window.confirm(`Delete group "${group.name}"? All associated timetable entries will also be deleted.`)) return;
+    try {
+      await deleteBatchGroup(batchId, group.id);
+      qc.invalidateQueries({ queryKey: ['batch-groups', batchId] });
+      qc.invalidateQueries({ queryKey: ['timetable-entries'] });
+      toast.success('Deleted');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        toast.error(String(err.response?.data?.detail));
+      } else {
+        toast.error('Failed to delete');
+      }
+    }
+  }
+
+  return (
+    <div className="pt-3 border-t border-slate-100 mt-2">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Lab Groups</h3>
+        <button onClick={() => { setShowForm(true); setEditing(null); setName(''); }} className="btn-ghost text-xs text-brand-600 px-2 py-1 rounded">
+          <Plus size={12} className="inline mr-1" /> Add Group
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSave} className="mb-3 flex gap-2">
+          <input autoFocus className="input text-sm flex-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Group 1" />
+          <button type="submit" disabled={!name.trim()} className="btn btn-sm btn-primary">{editing ? 'Update' : 'Add'}</button>
+          <button type="button" onClick={() => setShowForm(false)} className="btn btn-sm btn-secondary">Cancel</button>
+        </form>
+      )}
+
+      {isLoading ? <div className="text-slate-500 text-xs py-2">Loading groups…</div> : groups.length === 0 ? (
+        <div className="text-center py-4 text-slate-400 text-xs bg-slate-50 rounded border border-dashed border-slate-200">
+          No lab groups added yet.
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {groups.map((g) => (
+            <div key={g.id} className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-full text-sm group shadow-sm">
+              <span className="text-slate-700 font-medium">{g.name}</span>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button type="button" aria-label={`Edit group ${g.name}`} onClick={() => { setEditing(g); setName(g.name); setShowForm(true); }} className="text-slate-400 hover:text-brand-600 p-0.5">
+                  <Edit2 size={12} />
+                </button>
+                <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => handleDelete(g)} className="text-slate-400 hover:text-red-600 p-0.5">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
+
 
 export function BatchesPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Batch | null>(null);
-  const [expandedBatchId, setExpandedBatchId] = useState<number | null>(null);
+  const [expandedPanel, setExpandedPanel] = useState<{ id: number; tab: 'subjects' | 'groups' } | null>(null);
 
   const { data: batches = [], isLoading } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
 
@@ -292,7 +398,7 @@ export function BatchesPage() {
       ) : (
         <div className="space-y-3">
           {batches.map((batch) => {
-            const isExpanded = expandedBatchId === batch.id;
+            const isExpanded = expandedPanel?.id === batch.id;
             return (
               <div key={batch.id} className="card p-3 flex flex-col transition-all">
                 {editing?.id === batch.id ? (
@@ -308,10 +414,10 @@ export function BatchesPage() {
                         type="button"
                         aria-expanded={isExpanded}
                         aria-label={`${isExpanded ? 'Collapse' : 'Expand'} subjects for ${batch.name}`}
-                        onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
+                        onClick={() => setExpandedPanel(expandedPanel?.id === batch.id && expandedPanel.tab === 'subjects' ? null : { id: batch.id, tab: 'subjects' })}
                         className="text-slate-400 hover:text-slate-600 transition-colors"
                       >
-                        {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                        {expandedPanel?.id === batch.id && expandedPanel.tab === 'subjects' ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                       </button>
                       <span
                         className="w-4 h-4 rounded-full flex-shrink-0"
@@ -325,11 +431,18 @@ export function BatchesPage() {
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                         <button
                           type="button"
-                          onClick={() => setExpandedBatchId(isExpanded ? null : batch.id)}
-                          className="btn-ghost px-2 py-1.5 rounded-lg text-xs font-medium text-slate-600 mr-2"
+                          onClick={() => setExpandedPanel(expandedPanel?.id === batch.id && expandedPanel.tab === 'subjects' ? null : { id: batch.id, tab: 'subjects' })}
+                          className={`btn-ghost px-2 py-1.5 rounded-lg text-xs font-medium mr-2 ${expandedPanel?.id === batch.id && expandedPanel.tab === 'subjects' ? 'bg-slate-100 text-slate-800' : 'text-slate-600'}`}
                         >
                           <BookOpen size={13} className="inline mr-1.5" />
                           Subjects
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedPanel(expandedPanel?.id === batch.id && expandedPanel.tab === 'groups' ? null : { id: batch.id, tab: 'groups' })}
+                          className={`btn-ghost px-2 py-1.5 rounded-lg text-xs font-medium mr-2 ${expandedPanel?.id === batch.id && expandedPanel.tab === 'groups' ? 'bg-slate-100 text-slate-800' : 'text-slate-600'}`}
+                        >
+                          Lab Groups
                         </button>
                         <button
                           type="button"
@@ -349,7 +462,8 @@ export function BatchesPage() {
                         </button>
                       </div>
                     </div>
-                    {isExpanded && <BatchSubjectsPanel batchId={batch.id} />}
+                    {expandedPanel?.id === batch.id && expandedPanel.tab === 'subjects' && <BatchSubjectsPanel batchId={batch.id} />}
+                    {expandedPanel?.id === batch.id && expandedPanel.tab === 'groups' && <BatchGroupsPanel batchId={batch.id} />}
                   </>
                 )}
               </div>

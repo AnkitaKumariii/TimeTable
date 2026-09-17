@@ -7,7 +7,7 @@ import axios from 'axios';
 import {
   createBatch, createEntry, createFaculty, createSubject, createRoom,
   deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
-  updateEntry, getEntries,
+  updateEntry, getEntries, getBatchGroups,
 } from '../api';
 import type {
   Batch, ConflictingEntry, DayOfWeek, FacultyMember, Room,
@@ -47,7 +47,7 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
           toast.error('Hours per week must be a positive integer.');
           return;
         }
-        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: hpw });
+        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: hpw, type: 'theory' });
         qc.invalidateQueries({ queryKey: ['subjects'] });
       } else if (type === 'room') {
         created = await createRoom({ name });
@@ -165,7 +165,16 @@ export function EntryModal({
   const { data: entries = [] } = useQuery({ queryKey: ['timetable-entries'], queryFn: () => getEntries() });
 
   const [batchId, setBatchId] = useState<number | null>(existingEntry?.batch_id ?? defaultBatchId ?? null);
+  const [groupId, setGroupId] = useState<number | null>(existingEntry?.group_id ?? null);
   const [subjectId, setSubjectId] = useState<number | null>(existingEntry?.subject_id ?? null);
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['batch-groups', batchId],
+    queryFn: () => batchId ? getBatchGroups(batchId) : Promise.resolve([]),
+    enabled: !!batchId,
+  });
+
+  const selectedSubject = subjects.find(s => s.id === subjectId);
   const [facultyId, setFacultyId] = useState<number | null>(existingEntry?.faculty_id ?? null);
   const [roomId, setRoomId] = useState<number | null>(existingEntry?.room_id ?? null);
   const [day] = useState<DayOfWeek>(existingEntry?.day ?? defaultDay ?? 'Monday');
@@ -176,14 +185,14 @@ export function EntryModal({
   const [quickCreate, setQuickCreate] = useState<{ type: 'batch' | 'subject' | 'faculty' | 'room'; initial: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
 
-  const isComplete = batchId != null && subjectId != null && facultyId != null && roomId != null && day != null && slotId != null;
+  const isComplete = batchId != null && subjectId != null && facultyId != null && roomId != null && day != null && slotId != null && selectedSubject != null && (selectedSubject.type !== 'lab' || groupId != null);
   const isEditing = !!existingEntry;
 
   const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
 
   function handleBatchChange(newBatchId: string | number) {
     const id = newBatchId as number;
-    if (id !== batchId) setSubjectId(null);
+    if (id !== batchId) { setSubjectId(null); setGroupId(null); }
     setBatchId(id);
     setConflict({ kind: 'none' });
   }
@@ -198,6 +207,7 @@ export function EntryModal({
       if (isEditing) {
         res = await updateEntry(existingEntry.id, {
           batch_id: batchId!,
+          group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
           faculty_id: facultyId!,
           room_id: roomId!,
@@ -208,6 +218,7 @@ export function EntryModal({
       } else {
         res = await createEntry({
           batch_id: batchId!,
+          group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
           faculty_id: facultyId!,
           room_id: roomId!,
@@ -253,6 +264,7 @@ export function EntryModal({
       if (isEditing) {
         res = await updateEntry(existingEntry.id, {
           batch_id: batchId!,
+          group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
           faculty_id: facultyId!,
           room_id: roomId!,
@@ -263,6 +275,7 @@ export function EntryModal({
       } else {
         res = await createEntry({
           batch_id: batchId!,
+          group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
           faculty_id: facultyId!,
           room_id: roomId!,
@@ -361,7 +374,7 @@ export function EntryModal({
                   <button
                     key={s.id}
                     type="button"
-                    onClick={() => { setSubjectId(s.id); setConflict({ kind: 'none' }); }}
+                    onClick={() => { setSubjectId(s.id); setConflict({ kind: 'none' }); if (s.type === 'theory') setGroupId(null); }}
                     className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[100px]
                       ${isSelected
                         ? 'border-brand-500/60 ring-1 ring-brand-500/60'
@@ -402,6 +415,23 @@ export function EntryModal({
               </div>
             )}
           </div>
+
+                    {/* Lab Group */}
+          {selectedSubject?.type === 'lab' && (
+            <div className="animate-slide-up">
+              <label className="label">Lab Group</label>
+              <Combobox
+                id="modal-group"
+                options={groups.map((g) => ({ value: g.id, label: g.name }))}
+                value={groupId}
+                onChange={(v) => { setGroupId(v as number); setConflict({ kind: 'none' }); }}
+                placeholder="Select lab group…"
+              />
+              {groups.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">No groups available in this batch. Add groups in Settings.</p>
+              )}
+            </div>
+          )}
 
           {/* Faculty */}
           <div>

@@ -9,12 +9,15 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -40,6 +43,11 @@ class DayOfWeek(str, enum.Enum):
 class FacultyRole(str, enum.Enum):
     professor = "professor"
     teaching_assistant = "teaching_assistant"
+
+
+class SubjectType(str, enum.Enum):
+    theory = "theory"
+    lab = "lab"
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -83,6 +91,30 @@ class Batch(Base):
     subjects: Mapped[list["Subject"]] = relationship(
         "Subject", back_populates="batch", cascade="all, delete-orphan"
     )
+    groups: Mapped[list["BatchGroup"]] = relationship(
+        "BatchGroup", back_populates="batch", cascade="all, delete-orphan"
+    )
+
+
+class BatchGroup(Base):
+    """A sub-group within a batch, specifically for lab sessions."""
+
+    __tablename__ = "batch_groups"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "name", name="uq_batch_group_name"),
+        UniqueConstraint("batch_id", "id", name="uq_batch_group_batch_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("batches.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    batch: Mapped["Batch"] = relationship("Batch", back_populates="groups", overlaps="entries")
+    entries: Mapped[list["TimetableEntry"]] = relationship(
+        "TimetableEntry", back_populates="group", cascade="all, delete-orphan", overlaps="batch,entries"
+    )
 
 
 class Subject(Base):
@@ -101,6 +133,9 @@ class Subject(Base):
     short_code: Mapped[str] = mapped_column(String(20), nullable=False)
     color: Mapped[str] = mapped_column(String(7), default="#0ea5e9", nullable=False)
     hours_per_week: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4")
+    type: Mapped[SubjectType] = mapped_column(
+        Enum(SubjectType, name="subject_type"), default=SubjectType.theory, nullable=False
+    )
 
     batch: Mapped["Batch"] = relationship("Batch", back_populates="subjects")
     entries: Mapped[list["TimetableEntry"]] = relationship(
@@ -166,9 +201,22 @@ class TimetableEntry(Base):
 
     __tablename__ = "timetable_entries"
     __table_args__ = (
-        # A batch can only have one entry per (day, time_slot)
+        # A specific group within a batch can only have one entry per (day, time_slot)
         UniqueConstraint(
-            "batch_id", "day", "time_slot_id", name="uq_batch_day_slot"
+            "batch_id", "day", "time_slot_id", "group_id", name="uq_batch_day_slot_group"
+        ),
+        # Partial unique index for theory entries (group_id is NULL)
+        Index(
+            "uq_theory_entry",
+            "batch_id", "day", "time_slot_id",
+            unique=True,
+            sqlite_where=text("group_id IS NULL"),
+            postgresql_where=text("group_id IS NULL")
+        ),
+        ForeignKeyConstraint(
+            ["batch_id", "group_id"],
+            ["batch_groups.batch_id", "batch_groups.id"],
+            name="fk_timetable_entries_batch_group"
         ),
     )
 
@@ -176,6 +224,7 @@ class TimetableEntry(Base):
     batch_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("batches.id"), nullable=False
     )
+    group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subject_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("subjects.id"), nullable=False
     )
@@ -199,7 +248,8 @@ class TimetableEntry(Base):
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    batch: Mapped["Batch"] = relationship("Batch", back_populates="entries")
+    batch: Mapped["Batch"] = relationship("Batch", back_populates="entries", overlaps="group,entries")
+    group: Mapped["BatchGroup | None"] = relationship("BatchGroup", back_populates="entries", overlaps="batch,entries")
     subject: Mapped["Subject"] = relationship("Subject", back_populates="entries")
     faculty: Mapped["Faculty"] = relationship("Faculty", back_populates="entries")
     time_slot: Mapped["TimeSlot"] = relationship("TimeSlot", back_populates="entries")

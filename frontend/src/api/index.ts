@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import type {
   ActiveDaysOut,
   Batch, BatchCreate, BatchUpdate,
+  BatchGroup, BatchGroupCreate, BatchGroupUpdate,
   DayOfWeek,
   EntryCreate, EntryCreateResponse, EntryUpdate,
   FacultyCreate, FacultyMember, FacultyUpdate,
@@ -31,6 +32,19 @@ export const updateBatch = (id: number, data: BatchUpdate) =>
 
 export const deleteBatch = (id: number) =>
   apiClient.delete(`/batches/${id}`);
+
+// ── Batch Groups ──────────────────────────────────────────────────────────────
+export const getBatchGroups = (batch_id: number) =>
+  apiClient.get<BatchGroup[]>(`/batches/${batch_id}/groups`).then((r) => r.data);
+
+export const createBatchGroup = (batch_id: number, data: BatchGroupCreate) =>
+  apiClient.post<BatchGroup>(`/batches/${batch_id}/groups`, data).then((r) => r.data);
+
+export const updateBatchGroup = (batch_id: number, group_id: number, data: BatchGroupUpdate) =>
+  apiClient.patch<BatchGroup>(`/batches/${batch_id}/groups/${group_id}`, data).then((r) => r.data);
+
+export const deleteBatchGroup = (batch_id: number, group_id: number) =>
+  apiClient.delete(`/batches/${batch_id}/groups/${group_id}`);
 
 // ── Subjects ──────────────────────────────────────────────────────────────────
 export const getSubjects = (params?: { batch_id?: number }) =>

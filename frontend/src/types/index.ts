@@ -3,6 +3,7 @@
 export type UserRole = 'admin' | 'faculty';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
 export type ConflictStatus = 'ok' | 'conflict' | 'warning';
+export type SubjectType = 'theory' | 'lab';
 
 export interface User {
   id: number;
@@ -23,6 +24,12 @@ export interface Batch {
   is_active: boolean;
 }
 
+export interface BatchGroup {
+  id: number;
+  batch_id: number;
+  name: string;
+}
+
 export interface Subject {
   id: number;
   batch_id: number;
@@ -30,6 +37,7 @@ export interface Subject {
   short_code: string;
   color: string;
   hours_per_week: number;
+  type: SubjectType;
 }
 
 export type FacultyRole = 'professor' | 'teaching_assistant';
@@ -53,6 +61,7 @@ export interface TimeSlot {
 export interface TimetableEntry {
   id: number;
   batch_id: number;
+  group_id?: number | null;
   subject_id: number;
   faculty_id: number;
   day: DayOfWeek;
@@ -62,6 +71,7 @@ export interface TimetableEntry {
   created_at: string;
   updated_at: string;
   batch: Batch;
+  group?: BatchGroup | null;
   subject: Subject;
   faculty: FacultyMember;
   time_slot: TimeSlot;
@@ -70,6 +80,7 @@ export interface TimetableEntry {
 
 export interface ConflictingEntry {
   batch: string;
+  group?: string | null;
   subject: string;
   time_slot: string;
   day: string;
@@ -102,13 +113,15 @@ export interface Room {
 
 export interface BatchCreate { name: string; color: string; is_active?: boolean }
 export interface BatchUpdate { name?: string; color?: string; is_active?: boolean }
-export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string; hours_per_week: number }
-export interface SubjectUpdate { name?: string; short_code?: string; color?: string; hours_per_week?: number }
+export interface BatchGroupCreate { name: string }
+export interface BatchGroupUpdate { name?: string }
+export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string; hours_per_week: number; type: SubjectType }
+export interface SubjectUpdate { name?: string; short_code?: string; color?: string; hours_per_week?: number; type?: SubjectType }
 export interface FacultyCreate { name: string; email?: string; role?: FacultyRole }
 export interface FacultyUpdate { name?: string; email?: string; role?: FacultyRole }
 export interface TimeSlotCreate { label: string; start_time: string; end_time: string; sort_order: number; is_break?: boolean }
 export interface TimeSlotUpdate { label?: string; start_time?: string; end_time?: string; sort_order?: number; is_break?: boolean }
 export interface RoomCreate { name: string; }
 export interface RoomUpdate { name?: string; }
-export interface EntryCreate { batch_id: number; subject_id: number; faculty_id: number; day: DayOfWeek; time_slot_id: number; room_id: number; }
-export interface EntryUpdate { batch_id?: number; subject_id?: number; faculty_id?: number; day?: DayOfWeek; time_slot_id?: number; room_id?: number; version: number }
+export interface EntryCreate { batch_id: number; group_id?: number | null; subject_id: number; faculty_id: number; day: DayOfWeek; time_slot_id: number; room_id: number; }
+export interface EntryUpdate { batch_id?: number; group_id?: number | null; subject_id?: number; faculty_id?: number; day?: DayOfWeek; time_slot_id?: number; room_id?: number; version: number }

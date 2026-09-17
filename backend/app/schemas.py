@@ -4,9 +4,9 @@ from __future__ import annotations
 from datetime import datetime, time
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 
-from app.models import DayOfWeek, FacultyRole, UserRole
+from app.models import DayOfWeek, FacultyRole, UserRole, SubjectType
 
 
 # ── Shared config ──────────────────────────────────────────────────────────────
@@ -56,6 +56,30 @@ class BatchOut(_ORM):
     is_active: bool
 
 
+class BatchGroupCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, v: str) -> str:
+        return v.strip()
+
+
+class BatchGroupUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else v
+
+
+class BatchGroupOut(_ORM):
+    id: int
+    batch_id: int
+    name: str
+
+
 # ── Subject ────────────────────────────────────────────────────────────────────
 
 class SubjectCreate(BaseModel):
@@ -64,6 +88,7 @@ class SubjectCreate(BaseModel):
     short_code: str
     color: str = "#0ea5e9"
     hours_per_week: int = 4
+    type: SubjectType = SubjectType.theory
 
 
 class SubjectUpdate(BaseModel):
@@ -71,6 +96,7 @@ class SubjectUpdate(BaseModel):
     short_code: Optional[str] = None
     color: Optional[str] = None
     hours_per_week: Optional[int] = None
+    type: Optional[SubjectType] = None
 
 
 class SubjectOut(_ORM):
@@ -80,6 +106,7 @@ class SubjectOut(_ORM):
     short_code: str
     color: str
     hours_per_week: int
+    type: SubjectType
 
 
 # ── Faculty ────────────────────────────────────────────────────────────────────
@@ -149,6 +176,7 @@ class RoomOut(_ORM):
 
 class EntryCreate(BaseModel):
     batch_id: int
+    group_id: Optional[int] = None
     subject_id: int
     faculty_id: int
     day: DayOfWeek
@@ -158,6 +186,7 @@ class EntryCreate(BaseModel):
 
 class EntryUpdate(BaseModel):
     batch_id: Optional[int] = None
+    group_id: Optional[int] = None
     subject_id: Optional[int] = None
     faculty_id: Optional[int] = None
     day: Optional[DayOfWeek] = None
@@ -168,6 +197,7 @@ class EntryUpdate(BaseModel):
 
 class ConflictingEntry(BaseModel):
     batch: str
+    group: Optional[str] = None
     subject: str
     time_slot: str
     day: str
@@ -183,6 +213,7 @@ class EntryCheckResponse(BaseModel):
 class EntryOut(_ORM):
     id: int
     batch_id: int
+    group_id: Optional[int] = None
     subject_id: int
     faculty_id: int
     day: DayOfWeek
@@ -193,6 +224,7 @@ class EntryOut(_ORM):
     updated_at: datetime
     # Nested for convenience
     batch: BatchOut
+    group: Optional[BatchGroupOut] = None
     subject: SubjectOut
     faculty: FacultyOut
     time_slot: TimeSlotOut

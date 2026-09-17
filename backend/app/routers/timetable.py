@@ -10,11 +10,13 @@ from sqlalchemy.orm import Session, joinedload
 from app.deps import get_current_user, get_db
 from app.models import (
     Batch,
+    BatchGroup,
     DayOfWeek,
     Faculty,
     Room,
     Setting,
     Subject,
+    SubjectType,
     TimeSlot,
     TimetableEntry,
     User,
@@ -65,6 +67,7 @@ def _check_conflicts(
     time_slot_id: int,
     subject_id: int,
     room_id: int,
+    group_id: Optional[int] = None,
     exclude_entry_id: Optional[int] = None,
     lock_subject: bool = False,
 ) -> EntryCheckResponse:
@@ -274,6 +277,7 @@ def _load_entry(db: Session, entry_id: int) -> TimetableEntry:
         db.query(TimetableEntry)
         .options(
             joinedload(TimetableEntry.batch),
+            joinedload(TimetableEntry.group),
             joinedload(TimetableEntry.subject),
             joinedload(TimetableEntry.faculty),
             joinedload(TimetableEntry.time_slot),
@@ -298,6 +302,7 @@ def list_entries(
 ):
     q = db.query(TimetableEntry).options(
         joinedload(TimetableEntry.batch),
+        joinedload(TimetableEntry.group),
         joinedload(TimetableEntry.subject),
         joinedload(TimetableEntry.faculty),
         joinedload(TimetableEntry.time_slot),
@@ -329,6 +334,7 @@ def check_entry(
         time_slot_id=payload.time_slot_id,
         subject_id=payload.subject_id,
         room_id=payload.room_id,
+        group_id=payload.group_id,
     )
 
 
@@ -354,24 +360,42 @@ def create_entry(
         if not db.query(model).filter(model.id == fid).first():
             raise HTTPException(status_code=404, detail=f"{label} not found")
 
-    # Validate subject belongs to the selected batch
+    if payload.group_id is not None:
+        group = db.query(BatchGroup).filter(BatchGroup.id == payload.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Batch group not found")
+        if group.batch_id != payload.batch_id:
+            raise HTTPException(status_code=422, detail="Group does not belong to the selected batch")
+
+    # Validate subject belongs to the selected batch and type matches group presence
     subject = db.query(Subject).filter(Subject.id == payload.subject_id).first()
     if subject.batch_id != payload.batch_id:
         raise HTTPException(
             status_code=422,
             detail="Subject does not belong to the selected batch",
         )
+    if subject.type == SubjectType.theory and payload.group_id is not None:
+        raise HTTPException(status_code=422, detail="Theory subjects cannot be assigned to a specific group")
+    if subject.type == SubjectType.lab and payload.group_id is None:
+        raise HTTPException(status_code=422, detail="Lab subjects must be assigned to a specific group")
 
     # Check unique constraint (batch + day + slot)
-    existing = db.query(TimetableEntry).filter(
+    existing_q = db.query(TimetableEntry).filter(
         TimetableEntry.batch_id == payload.batch_id,
         TimetableEntry.day == payload.day,
         TimetableEntry.time_slot_id == payload.time_slot_id,
-    ).first()
-    if existing:
-        raise HTTPException(
-            status_code=409, detail="This batch already has a class at this slot"
-        )
+    )
+    
+    if payload.group_id is None:
+        if existing_q.filter(TimetableEntry.group_id.is_(None)).first():
+            raise HTTPException(status_code=409, detail="This batch already has a theory class at this slot")
+        if existing_q.filter(TimetableEntry.group_id.isnot(None)).first():
+            raise HTTPException(status_code=409, detail="This batch already has lab sessions running at this slot")
+    else:
+        if existing_q.filter(TimetableEntry.group_id == payload.group_id).first():
+            raise HTTPException(status_code=409, detail="This group already has a class at this slot")
+        if existing_q.filter(TimetableEntry.group_id.is_(None)).first():
+            raise HTTPException(status_code=409, detail="This batch already has a theory class at this slot")
 
     check = _check_conflicts(
         db,
@@ -381,6 +405,7 @@ def create_entry(
         time_slot_id=payload.time_slot_id,
         subject_id=payload.subject_id,
         room_id=payload.room_id,
+        group_id=payload.group_id,
         lock_subject=True,
     )
 
@@ -443,10 +468,19 @@ def update_entry(
     eff_day = update_data.get("day", entry.day)
     eff_slot_id = update_data.get("time_slot_id", entry.time_slot_id)
     eff_room_id = update_data.get("room_id", entry.room_id)
-
-    # Validate room exists
     if not db.query(Room).filter(Room.id == eff_room_id).first():
         raise HTTPException(status_code=404, detail="Room not found")
+
+    eff_group_id = update_data.get("group_id", entry.group_id)
+    if "group_id" in update_data and update_data["group_id"] is None:
+        eff_group_id = None
+
+    if eff_group_id is not None:
+        group = db.query(BatchGroup).filter(BatchGroup.id == eff_group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Batch group not found")
+        if group.batch_id != eff_batch_id:
+            raise HTTPException(status_code=422, detail="Group does not belong to the selected batch")
 
     # Validate subject belongs to the effective batch
     eff_subject = db.query(Subject).filter(Subject.id == eff_subject_id).first()
@@ -457,6 +491,29 @@ def update_entry(
             status_code=422,
             detail="Subject does not belong to the selected batch",
         )
+    if eff_subject.type == SubjectType.theory and eff_group_id is not None:
+        raise HTTPException(status_code=422, detail="Theory subjects cannot be assigned to a specific group")
+    if eff_subject.type == SubjectType.lab and eff_group_id is None:
+        raise HTTPException(status_code=422, detail="Lab subjects must be assigned to a specific group")
+
+    # Check unique constraints
+    existing_q = db.query(TimetableEntry).filter(
+        TimetableEntry.batch_id == eff_batch_id,
+        TimetableEntry.day == eff_day,
+        TimetableEntry.time_slot_id == eff_slot_id,
+        TimetableEntry.id != entry_id,
+    )
+    
+    if eff_group_id is None:
+        if existing_q.filter(TimetableEntry.group_id.is_(None)).first():
+            raise HTTPException(status_code=409, detail="This batch already has a theory class at this slot")
+        if existing_q.filter(TimetableEntry.group_id.isnot(None)).first():
+            raise HTTPException(status_code=409, detail="This batch already has lab sessions running at this slot")
+    else:
+        if existing_q.filter(TimetableEntry.group_id == eff_group_id).first():
+            raise HTTPException(status_code=409, detail="This group already has a class at this slot")
+        if existing_q.filter(TimetableEntry.group_id.is_(None)).first():
+            raise HTTPException(status_code=409, detail="This batch already has a theory class at this slot")
 
     check = _check_conflicts(
         db,
@@ -466,6 +523,7 @@ def update_entry(
         time_slot_id=eff_slot_id,
         subject_id=eff_subject_id,
         room_id=eff_room_id,
+        group_id=eff_group_id,
         exclude_entry_id=entry_id,
         lock_subject=True,
     )

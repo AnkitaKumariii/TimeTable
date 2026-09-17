@@ -227,7 +227,7 @@ function EntryCard({ entry, onClick }: { entry: TimetableEntry; onClick: () => v
         className="badge self-start text-[10px] px-1.5 py-0.5 mt-0.5 rounded-full"
         style={{ backgroundColor: batchBg, color: batchText }}
       >
-        {entry.batch.name}
+        {entry.batch.name} {entry.group ? `(${entry.group.name})` : ''}
       </span>
 
       {/* Faculty */}
