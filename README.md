@@ -1,90 +1,117 @@
 # NitaTime 🕒
 
-A modern, robust college timetable management system designed specifically for NIT Agartala. 
-NitaTime simplifies scheduling with intuitive interfaces, intelligent conflict detection, and a unified architecture.
+A modern, robust, and dynamic college timetable management system designed specifically for NIT Agartala and scalable to any institution. NitaTime simplifies the complex task of academic scheduling with an intuitive drag-and-drop interface, intelligent conflict detection, and a unified, highly-performant architecture.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![React](https://img.shields.io/badge/frontend-React-61dafb.svg)
 ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688.svg)
-
-## ✨ Features
-
-- **🔐 Secure Single Admin Login**: Centralized control over the entire schedule.
-- **📚 Multi-Batch Scheduling**: Effortlessly manage timetables across multiple cohorts (e.g. M.TECH-AI-1).
-- **🧪 Lab Groups (Batch Groups)**: Divide batches into smaller subgroups to schedule concurrent lab sessions seamlessly.
-- **⚠️ Intelligent Conflict Detection**:
-  - *Hard Conflicts*: Prevents assigning the same faculty to different batches at the exact same time, while allowing multiple lab groups within a batch to run concurrently.
-  - *Soft Warnings*: Alerts if a faculty member has consecutive classes, allowing an optional override.
-- **📊 Subject Limits**: Enforces weekly hour limits for subjects to prevent over-scheduling, safely backed by row-level locking.
-- **⚙️ Comprehensive Settings**: Easily configure Batches (with their specific Subjects), Faculty (with Roles), Active Days, and Time Slots from the UI.
-- **⚡ Optimistic Concurrency**: Ensures multiple sessions don't overwrite each other's changes.
-- **🐳 Unified Deployment**: Delivered as a single multi-stage Docker container serving both the API and static frontend assets.
-
-## 🏗️ Architecture
-
-For a detailed view of the system components, data models, and conflict resolution logic, please refer to our **[Architecture Documentation](./architecture.md)**.
-
-## 💻 Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Backend** | FastAPI + SQLAlchemy + Alembic |
-| **Database** | SQLite (Dev) / Turso (Prod) |
-| **Auth** | JWT (Single Admin) |
-| **Frontend** | React + Vite + Tailwind CSS + TanStack Query |
-| **Deploy** | Unified Docker Container (Render / Railway / VPS) |
+![Turso](https://img.shields.io/badge/database-Turso-4ade80.svg)
 
 ---
 
-## 🚀 Local Development
+## ✨ Core Features
 
-### Backend
+### 🎛️ Interactive Scheduling Grid
+- **Visual Timetable**: View and manage the entire college schedule on a dynamic weekly grid.
+- **Context-Aware Mapping**: Seamlessly filter views by specific batches, faculties, or days.
+- **Smart Validation**: Forms intelligently adapt based on the selected subject type (theory vs. lab) and automatically constrain available choices.
+
+### 📚 Advanced Batch & Group Management
+- **Multi-Batch Architecture**: Effortlessly manage timetables across multiple distinct cohorts (e.g. M.TECH-AI-1, B.TECH-CSE-3).
+- **🧪 Lab Groups (Batch Groups)**: Divide batches into smaller subgroups to schedule concurrent lab sessions. Allows for precise handling of resource-intensive sessions where only a portion of the batch is occupied.
+- **Subject Constraints**: Bind specific subjects to batches, categorize them as `Theory` or `Lab`, and enforce weekly hour limits per subject.
+
+### ⚠️ Intelligent Conflict Detection
+NitaTime ensures a flawless schedule by validating constraints in real-time before persisting any entry:
+- **Hard Conflicts**: Strictly prevents assigning the same faculty to different batches at the exact same time, and ensures rooms are not double-booked. Concurrently running lab groups within the same batch are gracefully handled.
+- **Soft Warnings**: Gently alerts the admin if a faculty member has consecutive back-to-back classes, allowing for an optional override if the schedule permits.
+- **Optimistic Concurrency**: Employs row-level versioning. If multiple admins modify the schedule simultaneously, the system ensures changes aren't silently overwritten.
+
+### ⚙️ Comprehensive Administrative Control
+- **Secure Single Admin Login**: Centralized JWT-based control over the entire schedule to prevent unauthorized modifications.
+- **Settings Dashboard**: Fully configure Batches, Faculty roles, Active Days, Rooms, and specific Time Slots directly from the UI.
+- **Dynamic Active Days**: Toggle which days of the week are active (e.g., enable Saturday schedules on the fly).
+
+### 🐳 Unified Deployment
+- **Single Container**: Delivered as a multi-stage Docker container serving both the FastAPI backend and the static React frontend assets—eliminating the need for complex microservice orchestrations.
+- **Edge Database Integration**: Native support for **Turso (libsql)** for blazing-fast, edge-replicated production data storage, while supporting local SQLite for rapid development.
+
+---
+
+## 💻 Tech Stack
+
+| Layer | Technology | Description |
+|-------|------------|-------------|
+| **Backend** | [FastAPI](https://fastapi.tiangolo.com/) | High-performance async Python framework for the API. |
+| **Database ORM**| [SQLAlchemy](https://www.sqlalchemy.org/) + [Alembic](https://alembic.sqlalchemy.org/) | Robust data modeling and schema migrations. |
+| **Database** | SQLite / [Turso](https://turso.tech/) | Local SQLite for dev, libSQL via Turso for edge production. |
+| **Auth** | JWT | Secure Bearer token authentication. |
+| **Frontend** | [React](https://react.dev/) + [Vite](https://vitejs.dev/) | Lightning-fast UI rendering and bundling. |
+| **Styling** | [Tailwind CSS](https://tailwindcss.com/) | Utility-first CSS framework for a responsive, modern design. |
+| **State Mgt** | [TanStack Query](https://tanstack.com/query) | Powerful asynchronous state management and data fetching. |
+| **Deploy** | Docker | Unified multi-stage container build. |
+
+---
+
+## 🏗️ Architecture
+
+NitaTime is built on a unified monolith pattern for simplicity and speed. The FastAPI backend serves the REST API on `/api/*` and acts as a static file server for the compiled React frontend, ensuring CORS issues are non-existent in production and deployment is a breeze.
+
+For a detailed view of the system components, data models, and conflict resolution logic, please refer to our **[Architecture Documentation](./architecture.md)**.
+
+---
+
+## 🚀 Local Development Setup
+
+### 1. Backend
 
 ```bash
 cd backend
 
-# 1. Create virtual environment
+# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 2. Install dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# 3. Copy and edit env
+# Copy and edit env
 cp .env.example .env
 # Edit .env — set ADMIN_USERNAME and ADMIN_PASSWORD at minimum
 
-# 4. Run migrations
+# Run database migrations
 alembic upgrade head
 
-# 5. Seed default data (time slots + admin user)
+# Seed default data (time slots + admin user)
 python seed.py
 
-# 6. Start server
+# Start server
 uvicorn app.main:app --reload --port 8000
 ```
-API docs are available at: http://localhost:8000/docs
+Interactive API docs are available at: `http://localhost:8000/docs`
 
-### Frontend
+### 2. Frontend
 
 ```bash
 cd frontend
 
-# 1. Install dependencies
+# Install dependencies
 npm install
 
-# 2. Copy env
+# Copy env
 cp .env.example .env.local
 # Default: VITE_API_URL=http://localhost:8000
 
-# 3. Start dev server
+# Start dev server
 npm run dev
 ```
-App is available at: http://localhost:5173
+The App is available at: `http://localhost:5173`
 
 ---
 
 ## ☁️ Turso Setup (Production Database)
+
+NitaTime uses Turso for serverless edge database hosting.
 
 ```bash
 # Install Turso CLI
@@ -105,7 +132,7 @@ turso db tokens create nitatime
 ```
 
 Set the following in your deployment environment:
-```
+```env
 DATABASE_URL=libsql://nitatime-<org>.turso.io
 TURSO_AUTH_TOKEN=<token from above>
 ```
@@ -114,10 +141,10 @@ TURSO_AUTH_TOKEN=<token from above>
 
 ## 📦 Deployment (Docker)
 
-NitaTime is packaged as a unified Docker container. The FastAPI backend serves both the API and the compiled React frontend, meaning you only need to deploy a single service.
+NitaTime is packaged as a unified Docker container. You only need to deploy a single service.
 
-1. **Push code to GitHub**
-2. **Choose your hosting method:**
+1. **Push your code to GitHub.**
+2. **Choose your hosting platform:**
    - **PaaS (e.g., Render, Railway, Fly.io)**: Connect your GitHub repo, select **Docker** as your runtime, and configure the environment variables in your deployment dashboard.
    - **VPS (e.g., DigitalOcean, AWS EC2)**: Clone your repo to the server, create an `.env` file, and run:
      ```bash
@@ -132,7 +159,7 @@ NitaTime is packaged as a unified Docker container. The FastAPI backend serves b
 
 4. The container exposes port `8000` by default.
 
-> ⚠️ **Cold start**: If you are using a free tier on services like Render, the app will spin down after 15 minutes of inactivity. The first request after being idle may take **30–60 seconds**.
+> ⚠️ **Cold start Note**: If you are using a free tier on services like Render, the app will spin down after 15 minutes of inactivity. The first request after being idle may take **30–60 seconds** to wake up.
 
 ---
 
@@ -140,23 +167,23 @@ NitaTime is packaged as a unified Docker container. The FastAPI backend serves b
 
 ```
 TimeTable/
-├── architecture.md      # Diagrams & Design docs
+├── architecture.md      # Diagrams & In-depth Design Docs
 ├── backend/
 │   ├── app/
-│   │   ├── main.py      # FastAPI app (API + Static Serving)
-│   │   ├── models.py    # SQLAlchemy models
-│   │   ├── schemas.py   # Pydantic schemas
-│   │   ├── auth.py      # JWT helpers
-│   │   ├── deps.py      # FastAPI dependencies
-│   │   └── routers/     # Resource endpoints
-│   ├── alembic/         # DB migrations
-│   ├── seed.py          # One-time seed script
-│   └── requirements.txt
+│   │   ├── main.py      # FastAPI application & Static Serving
+│   │   ├── models.py    # SQLAlchemy Data Models
+│   │   ├── schemas.py   # Pydantic Validation Schemas
+│   │   ├── auth.py      # JWT Authentication Middleware
+│   │   ├── deps.py      # FastAPI Injected Dependencies
+│   │   └── routers/     # REST API Resource Endpoints
+│   ├── alembic/         # Alembic DB Migration Scripts
+│   ├── seed.py          # One-time Database Seeding Script
+│   └── requirements.txt # Python Dependencies
 └── frontend/
     └── src/
-        ├── api/         # API client functions
-        ├── components/  # Grid, Modal, ConflictNotification, etc.
-        ├── pages/       # TimetablePage & Settings Pages (Batches, Faculty, etc.)
-        ├── types/       # TypeScript types
-        └── lib/         # Utilities
+        ├── api/         # Frontend API Client & Endpoints
+        ├── components/  # Reusable UI Components (Grid, Modals)
+        ├── pages/       # High-Level Views (Timetable, Settings)
+        ├── types/       # Global TypeScript Interface Definitions
+        └── lib/         # Utility Helpers
 ```
