@@ -11,8 +11,9 @@ NitaTime simplifies scheduling with intuitive interfaces, intelligent conflict d
 
 - **🔐 Secure Single Admin Login**: Centralized control over the entire schedule.
 - **📚 Multi-Batch Scheduling**: Effortlessly manage timetables across multiple cohorts (e.g. M.TECH-AI-1).
+- **🧪 Lab Groups (Batch Groups)**: Divide batches into smaller subgroups to schedule concurrent lab sessions seamlessly.
 - **⚠️ Intelligent Conflict Detection**:
-  - *Hard Conflicts*: Prevents assigning the same faculty to different batches at the exact same time.
+  - *Hard Conflicts*: Prevents assigning the same faculty to different batches at the exact same time, while allowing multiple lab groups within a batch to run concurrently.
   - *Soft Warnings*: Alerts if a faculty member has consecutive classes, allowing an optional override.
 - **📊 Subject Limits**: Enforces weekly hour limits for subjects to prevent over-scheduling, safely backed by row-level locking.
 - **⚙️ Comprehensive Settings**: Easily configure Batches (with their specific Subjects), Faculty (with Roles), Active Days, and Time Slots from the UI.
