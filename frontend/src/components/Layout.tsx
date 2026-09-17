@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   CalendarDays, ChevronLeft, ChevronRight,
-  Clock, GraduationCap, LogOut, Settings, Users,
+  Clock, GraduationCap, LogOut, Settings, Users, MapPin
 } from 'lucide-react';
 
 export function Layout() {
@@ -74,6 +74,12 @@ export function Layout() {
           }>
             <Settings size={16} />
             {!collapsed && 'Active Days'}
+          </NavLink>
+          <NavLink to="/settings/rooms" className={({ isActive }) =>
+            `nav-link ${isActive ? 'active' : ''} ${collapsed ? 'justify-center px-2' : ''}`
+          }>
+            <MapPin size={16} />
+            {!collapsed && 'Rooms'}
           </NavLink>
         </nav>
 

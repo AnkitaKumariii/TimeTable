@@ -130,6 +130,21 @@ class TimeSlotOut(_ORM):
     is_break: bool
 
 
+# ── Room ───────────────────────────────────────────────────────────────────────
+
+class RoomCreate(BaseModel):
+    name: str
+
+
+class RoomUpdate(BaseModel):
+    name: Optional[str] = None
+
+
+class RoomOut(_ORM):
+    id: int
+    name: str
+
+
 # ── TimetableEntry ─────────────────────────────────────────────────────────────
 
 class EntryCreate(BaseModel):
@@ -138,6 +153,7 @@ class EntryCreate(BaseModel):
     faculty_id: int
     day: DayOfWeek
     time_slot_id: int
+    room_id: int
 
 
 class EntryUpdate(BaseModel):
@@ -146,6 +162,7 @@ class EntryUpdate(BaseModel):
     faculty_id: Optional[int] = None
     day: Optional[DayOfWeek] = None
     time_slot_id: Optional[int] = None
+    room_id: Optional[int] = None
     version: int  # required – optimistic concurrency
 
 
@@ -154,6 +171,7 @@ class ConflictingEntry(BaseModel):
     subject: str
     time_slot: str
     day: str
+    room: str
 
 
 class EntryCheckResponse(BaseModel):
@@ -169,6 +187,7 @@ class EntryOut(_ORM):
     faculty_id: int
     day: DayOfWeek
     time_slot_id: int
+    room_id: int
     version: int
     created_at: datetime
     updated_at: datetime
@@ -177,6 +196,7 @@ class EntryOut(_ORM):
     subject: SubjectOut
     faculty: FacultyOut
     time_slot: TimeSlotOut
+    room: RoomOut
 
 
 class EntryCreateResponse(BaseModel):

@@ -239,7 +239,11 @@ function EntryCard({ entry, onClick }: { entry: TimetableEntry; onClick: () => v
           }`}>
           {entry.faculty.role === 'teaching_assistant' ? 'TA' : 'Prof.'}
         </span>
-        <span className="text-slate-700 truncate">{entry.faculty.name}</span>
+        <span className="text-slate-700 truncate flex-1">{entry.faculty.name}</span>
+      </span>
+      <span className="text-[10px] text-slate-500 leading-tight truncate mt-0.5 flex items-center gap-1">
+        <span className="w-2 h-2 rounded-full bg-slate-200" />
+        <span className="truncate">{entry.room?.name || 'Unassigned'}</span>
       </span>
     </div>
   );

@@ -7,6 +7,7 @@ import type {
   FacultyCreate, FacultyMember, FacultyUpdate,
   Subject, SubjectCreate, SubjectUpdate,
   TimeSlot, TimeSlotCreate, TimeSlotUpdate,
+  Room, RoomCreate, RoomUpdate,
   TimetableEntry,
   Token, User,
 } from '../types';
@@ -69,6 +70,19 @@ export const updateTimeSlot = (id: number, data: TimeSlotUpdate) =>
 
 export const deleteTimeSlot = (id: number) =>
   apiClient.delete(`/time-slots/${id}`);
+
+// ── Rooms ─────────────────────────────────────────────────────────────────────
+export const getRooms = () =>
+  apiClient.get<Room[]>('/rooms').then((r) => r.data);
+
+export const createRoom = (data: RoomCreate) =>
+  apiClient.post<Room>('/rooms', data).then((r) => r.data);
+
+export const updateRoom = (id: number, data: RoomUpdate) =>
+  apiClient.put<Room>(`/rooms/${id}`, data).then((r) => r.data);
+
+export const deleteRoom = (id: number) =>
+  apiClient.delete(`/rooms/${id}`);
 
 // ── Timetable Entries ─────────────────────────────────────────────────────────
 export const getEntries = (params?: { batch_id?: number; day?: DayOfWeek }) =>

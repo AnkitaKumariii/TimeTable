@@ -5,12 +5,12 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 
 import {
-  createBatch, createEntry, createFaculty, createSubject,
-  deleteEntry, getBatches, getFaculty, getSubjects,
+  createBatch, createEntry, createFaculty, createSubject, createRoom,
+  deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
   updateEntry, getEntries,
 } from '../api';
 import type {
-  Batch, ConflictingEntry, DayOfWeek, FacultyMember,
+  Batch, ConflictingEntry, DayOfWeek, FacultyMember, Room,
   Subject, TimetableEntry,
 } from '../types';
 import { Combobox } from './Combobox';
@@ -18,7 +18,7 @@ import { HardConflictAlert, SoftWarningAlert } from './ConflictNotification';
 
 // Inline quick-create mini-form
 interface QuickCreateProps {
-  type: 'batch' | 'subject' | 'faculty';
+  type: 'batch' | 'subject' | 'faculty' | 'room';
   initialName: string;
   batchId?: number;
   onCreated: (id: number) => void;
@@ -36,7 +36,7 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
   async function handleCreate() {
     setLoading(true);
     try {
-      let created: Batch | Subject | FacultyMember;
+      let created: Batch | Subject | FacultyMember | Room;
       if (type === 'batch') {
         created = await createBatch({ name, color });
         qc.invalidateQueries({ queryKey: ['batches'] });
@@ -49,6 +49,9 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
         }
         created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: hpw });
         qc.invalidateQueries({ queryKey: ['subjects'] });
+      } else if (type === 'room') {
+        created = await createRoom({ name });
+        qc.invalidateQueries({ queryKey: ['rooms'] });
       } else {
         created = await createFaculty({ name });
         qc.invalidateQueries({ queryKey: ['faculty'] });
@@ -97,7 +100,7 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
             </div>
           </div>
         )}
-        {type !== 'faculty' && (
+        {type !== 'faculty' && type !== 'room' && (
           <div className="flex items-center gap-2">
             <label className="text-xs text-slate-500">Color</label>
             <input
@@ -158,20 +161,22 @@ export function EntryModal({
   const { data: batches = [] } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
   const { data: subjects = [] } = useQuery({ queryKey: ['subjects'], queryFn: () => getSubjects() });
   const { data: faculty = [] } = useQuery({ queryKey: ['faculty'], queryFn: getFaculty });
+  const { data: rooms = [] } = useQuery({ queryKey: ['rooms'], queryFn: getRooms });
   const { data: entries = [] } = useQuery({ queryKey: ['timetable-entries'], queryFn: () => getEntries() });
 
   const [batchId, setBatchId] = useState<number | null>(existingEntry?.batch_id ?? defaultBatchId ?? null);
   const [subjectId, setSubjectId] = useState<number | null>(existingEntry?.subject_id ?? null);
   const [facultyId, setFacultyId] = useState<number | null>(existingEntry?.faculty_id ?? null);
+  const [roomId, setRoomId] = useState<number | null>(existingEntry?.room_id ?? null);
   const [day] = useState<DayOfWeek>(existingEntry?.day ?? defaultDay ?? 'Monday');
   const [slotId, setSlotId] = useState<number | null>(existingEntry?.time_slot_id ?? defaultSlotId ?? null);
 
   const [conflict, setConflict] = useState<ConflictState>({ kind: 'none' });
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const [quickCreate, setQuickCreate] = useState<{ type: 'batch' | 'subject' | 'faculty'; initial: string } | null>(null);
+  const [quickCreate, setQuickCreate] = useState<{ type: 'batch' | 'subject' | 'faculty' | 'room'; initial: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
 
-  const isComplete = batchId != null && subjectId != null && facultyId != null && day != null && slotId != null;
+  const isComplete = batchId != null && subjectId != null && facultyId != null && roomId != null && day != null && slotId != null;
   const isEditing = !!existingEntry;
 
   const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
@@ -195,6 +200,7 @@ export function EntryModal({
           batch_id: batchId!,
           subject_id: subjectId!,
           faculty_id: facultyId!,
+          room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
           version: existingEntry.version,
@@ -204,6 +210,7 @@ export function EntryModal({
           batch_id: batchId!,
           subject_id: subjectId!,
           faculty_id: facultyId!,
+          room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
         }, force);
@@ -248,6 +255,7 @@ export function EntryModal({
           batch_id: batchId!,
           subject_id: subjectId!,
           faculty_id: facultyId!,
+          room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
           version: existingEntry.version,
@@ -257,6 +265,7 @@ export function EntryModal({
           batch_id: batchId!,
           subject_id: subjectId!,
           faculty_id: facultyId!,
+          room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
         }, false);
@@ -420,7 +429,30 @@ export function EntryModal({
             )}
           </div>
 
-
+          {/* Room */}
+          <div>
+            <label className="label">Room</label>
+            <Combobox
+              id="modal-room"
+              options={rooms.map((r) => ({
+                value: r.id,
+                label: r.name,
+              }))}
+              value={roomId}
+              onChange={(v) => { setRoomId(v as number); setConflict({ kind: 'none' }); }}
+              placeholder="Select room…"
+              onAddNew={(q) => setQuickCreate({ type: 'room', initial: q })}
+              addNewLabel="Add new room"
+            />
+            {quickCreate?.type === 'room' && (
+              <QuickCreate
+                type="room"
+                initialName={quickCreate.initial}
+                onCreated={(id) => { setRoomId(id); setQuickCreate(null); }}
+                onCancel={() => setQuickCreate(null)}
+              />
+            )}
+          </div>
 
           {/* Conflict / warning notifications */}
           {conflict.kind === 'hard' && (

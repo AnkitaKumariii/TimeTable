@@ -8,6 +8,7 @@ import { BatchesPage } from './pages/settings/BatchesPage';
 import { FacultyPage } from './pages/settings/FacultyPage';
 import { TimeSlotsPage } from './pages/settings/TimeSlotsPage';
 import { DaysPage } from './pages/settings/DaysPage';
+import { RoomsPage } from './pages/settings/RoomsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('nitatime_token');
@@ -26,6 +27,7 @@ function SettingsLayout() {
           <Route path="faculty" element={<FacultyPage />} />
           <Route path="time-slots" element={<TimeSlotsPage />} />
           <Route path="days" element={<DaysPage />} />
+          <Route path="rooms" element={<RoomsPage />} />
         </Routes>
       </div>
     </div>

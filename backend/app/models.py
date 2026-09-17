@@ -148,6 +148,19 @@ class TimeSlot(Base):
     )
 
 
+class Room(Base):
+    """A physical room for classes."""
+
+    __tablename__ = "rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+
+    entries: Mapped[list["TimetableEntry"]] = relationship(
+        "TimetableEntry", back_populates="room"
+    )
+
+
 class TimetableEntry(Base):
     """One scheduled class: batch × subject × faculty × day × slot."""
 
@@ -175,6 +188,9 @@ class TimetableEntry(Base):
     time_slot_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("time_slots.id"), nullable=False
     )
+    room_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("rooms.id"), nullable=False
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
@@ -187,6 +203,7 @@ class TimetableEntry(Base):
     subject: Mapped["Subject"] = relationship("Subject", back_populates="entries")
     faculty: Mapped["Faculty"] = relationship("Faculty", back_populates="entries")
     time_slot: Mapped["TimeSlot"] = relationship("TimeSlot", back_populates="entries")
+    room: Mapped["Room"] = relationship("Room", back_populates="entries")
 
 
 class Setting(Base):

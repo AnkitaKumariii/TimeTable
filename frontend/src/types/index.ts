@@ -57,6 +57,7 @@ export interface TimetableEntry {
   faculty_id: number;
   day: DayOfWeek;
   time_slot_id: number;
+  room_id: number;
   version: number;
   created_at: string;
   updated_at: string;
@@ -64,6 +65,7 @@ export interface TimetableEntry {
   subject: Subject;
   faculty: FacultyMember;
   time_slot: TimeSlot;
+  room: Room;
 }
 
 export interface ConflictingEntry {
@@ -71,6 +73,7 @@ export interface ConflictingEntry {
   subject: string;
   time_slot: string;
   day: string;
+  room: string;
 }
 
 export interface EntryCheckResponse {
@@ -90,6 +93,11 @@ export interface ActiveDaysOut {
   active_days: DayOfWeek[];
 }
 
+export interface Room {
+  id: number;
+  name: string;
+}
+
 // ── Form payloads ─────────────────────────────────────────────────────────────
 
 export interface BatchCreate { name: string; color: string; is_active?: boolean }
@@ -100,5 +108,7 @@ export interface FacultyCreate { name: string; email?: string; role?: FacultyRol
 export interface FacultyUpdate { name?: string; email?: string; role?: FacultyRole }
 export interface TimeSlotCreate { label: string; start_time: string; end_time: string; sort_order: number; is_break?: boolean }
 export interface TimeSlotUpdate { label?: string; start_time?: string; end_time?: string; sort_order?: number; is_break?: boolean }
-export interface EntryCreate { batch_id: number; subject_id: number; faculty_id: number; day: DayOfWeek; time_slot_id: number }
-export interface EntryUpdate { batch_id?: number; subject_id?: number; faculty_id?: number; day?: DayOfWeek; time_slot_id?: number; version: number }
+export interface RoomCreate { name: string; }
+export interface RoomUpdate { name?: string; }
+export interface EntryCreate { batch_id: number; subject_id: number; faculty_id: number; day: DayOfWeek; time_slot_id: number; room_id: number; }
+export interface EntryUpdate { batch_id?: number; subject_id?: number; faculty_id?: number; day?: DayOfWeek; time_slot_id?: number; room_id?: number; version: number }

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
-from app.routers import auth, batches, faculty, subjects, time_slots, timetable
+from app.routers import auth, batches, faculty, rooms, subjects, time_slots, timetable
 
 settings = get_settings()
 
@@ -68,6 +68,7 @@ api_router.include_router(auth.router)
 api_router.include_router(batches.router)
 api_router.include_router(subjects.router)
 api_router.include_router(faculty.router)
+api_router.include_router(rooms.router)
 api_router.include_router(time_slots.router)
 api_router.include_router(timetable.router)
 

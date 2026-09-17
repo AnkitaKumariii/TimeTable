@@ -12,6 +12,7 @@ from app.models import (
     Batch,
     DayOfWeek,
     Faculty,
+    Room,
     Setting,
     Subject,
     TimeSlot,
@@ -63,6 +64,7 @@ def _check_conflicts(
     day: DayOfWeek,
     time_slot_id: int,
     subject_id: int,
+    room_id: int,
     exclude_entry_id: Optional[int] = None,
     lock_subject: bool = False,
 ) -> EntryCheckResponse:
@@ -76,7 +78,9 @@ def _check_conflicts(
         subject_q = subject_q.with_for_update()
     subject = subject_q.first()
 
-    if not faculty or not current_slot or not subject:
+    room = db.query(Room).filter(Room.id == room_id).first()
+
+    if not faculty or not current_slot or not subject or not room:
         return EntryCheckResponse(status="ok")
 
     # ── 0. Weekly Limit Check ──────────────────────────────────────────────────
@@ -124,6 +128,41 @@ def _check_conflicts(
                 subject=conflict.subject.name,
                 time_slot=_slot_label(conflict.time_slot),
                 day=conflict.day.value,
+                room=room.name,
+            ),
+        )
+
+    # ── 1.5. Hard conflict: same room + same slot (regardless of batch/faculty) ─
+    room_q = (
+        db.query(TimetableEntry)
+        .options(
+            joinedload(TimetableEntry.batch),
+            joinedload(TimetableEntry.subject),
+            joinedload(TimetableEntry.time_slot),
+        )
+        .filter(
+            TimetableEntry.room_id == room_id,
+            TimetableEntry.day == day,
+            TimetableEntry.time_slot_id == time_slot_id,
+        )
+    )
+    if exclude_entry_id:
+        room_q = room_q.filter(TimetableEntry.id != exclude_entry_id)
+
+    room_conflict = room_q.first()
+    if room_conflict:
+        return EntryCheckResponse(
+            status="conflict",
+            message=(
+                f"⚠️ Room {room.name} is already occupied by "
+                f"{room_conflict.subject.name} for {room_conflict.batch.name} at this time."
+            ),
+            conflicting_entry=ConflictingEntry(
+                batch=room_conflict.batch.name,
+                subject=room_conflict.subject.name,
+                time_slot=_slot_label(room_conflict.time_slot),
+                day=room_conflict.day.value,
+                room=room.name,
             ),
         )
 
@@ -174,6 +213,7 @@ def _check_conflicts(
                         subject=adj.subject.name,
                         time_slot=_slot_label(prev_slot),
                         day=adj.day.value,
+                        room=room.name,
                     ),
                 )
 
@@ -219,6 +259,7 @@ def _check_conflicts(
                     subject=adj2.subject.name,
                     time_slot=_slot_label(next_slot),
                     day=adj2.day.value,
+                    room=room.name,
                 ),
             )
 
@@ -233,6 +274,7 @@ def _load_entry(db: Session, entry_id: int) -> TimetableEntry:
             joinedload(TimetableEntry.subject),
             joinedload(TimetableEntry.faculty),
             joinedload(TimetableEntry.time_slot),
+            joinedload(TimetableEntry.room),
         )
         .filter(TimetableEntry.id == entry_id)
         .first()
@@ -256,6 +298,7 @@ def list_entries(
         joinedload(TimetableEntry.subject),
         joinedload(TimetableEntry.faculty),
         joinedload(TimetableEntry.time_slot),
+        joinedload(TimetableEntry.room),
     )
     if batch_id is not None:
         q = q.filter(TimetableEntry.batch_id == batch_id)
@@ -282,6 +325,7 @@ def check_entry(
         day=payload.day,
         time_slot_id=payload.time_slot_id,
         subject_id=payload.subject_id,
+        room_id=payload.room_id,
     )
 
 
@@ -302,6 +346,7 @@ def create_entry(
         (Subject, payload.subject_id, "Subject"),
         (Faculty, payload.faculty_id, "Faculty"),
         (TimeSlot, payload.time_slot_id, "Time slot"),
+        (Room, payload.room_id, "Room"),
     ]:
         if not db.query(model).filter(model.id == fid).first():
             raise HTTPException(status_code=404, detail=f"{label} not found")
@@ -332,6 +377,7 @@ def create_entry(
         day=payload.day,
         time_slot_id=payload.time_slot_id,
         subject_id=payload.subject_id,
+        room_id=payload.room_id,
         lock_subject=True,
     )
 
@@ -393,6 +439,7 @@ def update_entry(
     eff_subject_id = update_data.get("subject_id", entry.subject_id)
     eff_day = update_data.get("day", entry.day)
     eff_slot_id = update_data.get("time_slot_id", entry.time_slot_id)
+    eff_room_id = update_data.get("room_id", entry.room_id)
 
     # Validate subject belongs to the effective batch
     eff_subject = db.query(Subject).filter(Subject.id == eff_subject_id).first()
@@ -411,6 +458,7 @@ def update_entry(
         day=eff_day,
         time_slot_id=eff_slot_id,
         subject_id=eff_subject_id,
+        room_id=eff_room_id,
         exclude_entry_id=entry_id,
         lock_subject=True,
     )
