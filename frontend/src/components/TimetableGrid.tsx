@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { forwardRef, useState } from 'react';
 import { Plus, CoffeeIcon } from 'lucide-react';
 import type { Batch, DayOfWeek, TimeSlot, TimetableEntry } from '../types';
 import { hexAlpha, fmtSlotRange, isLightColor, darken } from '../lib/utils';
@@ -18,13 +18,13 @@ interface TimetableGridProps {
   filterBatchId: number | null;
 }
 
-export function TimetableGrid({
+export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(function TimetableGrid({
   entries,
   slots,
   activeDays,
   batches,
   filterBatchId,
-}: TimetableGridProps) {
+}, ref) {
   const [modal, setModal] = useState<{
     entry?: TimetableEntry | null;
     cell?: CellTarget;
@@ -65,7 +65,7 @@ export function TimetableGrid({
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 card">
+      <div ref={ref} className="overflow-x-auto rounded-xl border border-slate-200 card">
         <table className="border-collapse" style={{ minWidth: dayColWidth + sortedSlots.length * colWidth }}>
           <thead>
             <tr className="border-b border-slate-200">
@@ -134,9 +134,8 @@ export function TimetableGrid({
                     <td
                       key={slot.id}
                       className="px-2 py-2 border-r border-slate-200 last:border-r-0 align-top"
-                      style={{ minHeight: 80 }}
                     >
-                      <div className="flex flex-col gap-1 min-h-[60px]">
+                      <div className="flex flex-col gap-1 h-full">
                         {/* Display existing entries */}
                         {cellEntries.map((entry) => (
                           <EntryCard
@@ -192,7 +191,7 @@ export function TimetableGrid({
       )}
     </>
   );
-}
+});
 
 // ── Entry Card ────────────────────────────────────────────────────────────────
 

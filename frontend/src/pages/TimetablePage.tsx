@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, ChevronDown, RefreshCw } from 'lucide-react';
+import { CalendarDays, ChevronDown, Download, FileText, RefreshCw, Sheet } from 'lucide-react';
 import { getActiveDays, getBatches, getEntries, getTimeSlots } from '../api';
 import { TimetableGrid } from '../components/TimetableGrid';
+import { useTimetableDownload } from '../hooks/useTimetableDownload';
 import type { Batch, DayOfWeek } from '../types';
 
 type FilterMode = 'all' | number;
@@ -10,6 +11,9 @@ type FilterMode = 'all' | number;
 export function TimetablePage() {
   const [filterBatch, setFilterBatch] = useState<FilterMode>('all');
   const [showBatchMenu, setShowBatchMenu] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const { data: batches = [] } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
   const { data: slots = [] } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
@@ -26,6 +30,28 @@ export function TimetablePage() {
   });
 
   const selectedBatch: Batch | undefined = batches.find((b) => b.id === filterBatch);
+  const downloadLabel = filterBatch === 'all' ? 'All_Batches' : (selectedBatch?.name ?? 'Timetable');
+
+  const { downloadCsv, downloadPdf } = useTimetableDownload({
+    entries,
+    slots,
+    activeDays,
+    batches,
+    filterBatchId: filterBatch === 'all' ? null : filterBatch,
+    gridRef,
+    label: downloadLabel,
+  });
+
+  async function handleDownload(type: 'csv' | 'pdf') {
+    setShowDownloadMenu(false);
+    setIsExporting(true);
+    try {
+      if (type === 'csv') await downloadCsv();
+      else await downloadPdf();
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   return (
     <div className="min-h-screen p-4 md:p-6 lg:p-8">
@@ -50,6 +76,49 @@ export function TimetablePage() {
           >
             <RefreshCw size={15} className={isLoading ? 'animate-spin text-brand-600' : ''} />
           </button>
+
+          {/* Download */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+              className="btn btn-secondary flex items-center gap-2"
+              title="Download timetable"
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} />
+              )}
+              <span>{isExporting ? 'Exporting…' : 'Download'}</span>
+              <ChevronDown size={12} className={showDownloadMenu ? 'rotate-180' : ''} />
+            </button>
+
+            {showDownloadMenu && (
+              <div className="absolute right-0 mt-1 w-44 card shadow-xl border-slate-200 z-30 animate-slide-up overflow-hidden">
+                <ul className="py-1">
+                  <li>
+                    <button
+                      onClick={() => handleDownload('csv')}
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      <Sheet size={14} className="text-green-600" />
+                      Download CSV
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleDownload('pdf')}
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      <FileText size={14} className="text-red-500" />
+                      Download PDF
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            )}
+          </div>
 
           {/* Batch filter */}
           <div className="relative">
@@ -117,6 +186,7 @@ export function TimetablePage() {
         </div>
       ) : (
         <TimetableGrid
+          ref={gridRef}
           entries={entries}
           slots={slots}
           activeDays={activeDays}

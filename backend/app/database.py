@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -15,6 +16,11 @@ def _build_engine():
     - For production (libsql://) → use libsql-experimental as a DBAPI
       driver while keeping the SQLite dialect so Alembic/SQLAlchemy work
       without a custom dialect package.
+
+    NullPool is used for Turso so every request gets a brand-new
+    libsql connection. The pooler in libsql-experimental is not stable
+    enough to be reused across requests — stale connections cause a Rust
+    panic (Option::unwrap() on None) when SQLAlchemy tries to reuse them.
     """
     url = settings.database_url
 
@@ -31,7 +37,7 @@ def _build_engine():
 
         def _creator():
             conn = libsql.connect(database=url, auth_token=auth_token)
-            
+
             class LibsqlConnectionWrapper:
                 def __init__(self, c):
                     self._c = c
@@ -42,24 +48,22 @@ def _build_engine():
 
                 @isolation_level.setter
                 def isolation_level(self, value):
-                    # Reject unsupported isolation level runtime changes
-                    if value != self._c.isolation_level:
-                        raise ValueError(
-                            f"libsql-experimental does not support dynamic isolation_level changes. "
-                            f"Tried to change from {self._c.isolation_level} to {value}."
-                        )
+                    # libsql-experimental does not support dynamic isolation_level
+                    # changes — silently ignore them so SQLAlchemy doesn't crash.
+                    pass
 
                 def __getattr__(self, name):
                     return getattr(self._c, name)
 
                 def create_function(self, *args, **kwargs):
-                    pass # Prevent SQLAlchemy SQLite dialect from crashing
-                    
+                    pass  # Prevent SQLAlchemy SQLite dialect from crashing
+
             return LibsqlConnectionWrapper(conn)
 
         engine = create_engine(
-            "sqlite://",  # use SQLite dialect
+            "sqlite://",          # use SQLite dialect
             creator=_creator,
+            poolclass=NullPool,   # no connection reuse — avoids Rust panic on stale conns
             connect_args={"check_same_thread": False},
         )
     else:
