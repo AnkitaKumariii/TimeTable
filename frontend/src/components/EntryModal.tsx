@@ -138,6 +138,8 @@ interface EntryModalProps {
   defaultDay?: DayOfWeek;
   defaultSlotId?: number;
   defaultBatchId?: number;
+  /** Pre-select a lab group when opening from a group skeleton */
+  defaultGroupId?: number;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -153,6 +155,7 @@ export function EntryModal({
   defaultDay,
   defaultSlotId,
   defaultBatchId,
+  defaultGroupId,
   onClose,
   onSaved,
 }: EntryModalProps) {
@@ -166,7 +169,7 @@ export function EntryModal({
   const { data: slots = [] } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
 
   const [batchId, setBatchId] = useState<number | null>(existingEntry?.batch_id ?? defaultBatchId ?? null);
-  const [groupId, setGroupId] = useState<number | null>(existingEntry?.group_id ?? null);
+  const [groupId, setGroupId] = useState<number | null>(existingEntry?.group_id ?? defaultGroupId ?? null);
   const [subjectId, setSubjectId] = useState<number | null>(existingEntry?.subject_id ?? null);
 
   const { data: groups = [] } = useQuery({

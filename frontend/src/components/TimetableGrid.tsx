@@ -1,13 +1,17 @@
 import { forwardRef, useState } from 'react';
 import { Plus, CoffeeIcon } from 'lucide-react';
-import type { Batch, DayOfWeek, TimeSlot, TimetableEntry } from '../types';
+import { useQueries } from '@tanstack/react-query';
+import type { Batch, BatchGroup, DayOfWeek, TimeSlot, TimetableEntry } from '../types';
 import { hexAlpha, fmtSlotRange, isLightColor, darken } from '../lib/utils';
 import { EntryModal } from './EntryModal';
+import { getBatchGroups } from '../api';
 
 interface CellTarget {
   day: DayOfWeek;
   slotId: number;
   batchId?: number;
+  /** Pre-select a group when the modal opens from a group skeleton */
+  groupId?: number;
 }
 
 interface TimetableGridProps {
@@ -32,7 +36,22 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(func
 
   const sortedSlots = [...slots].sort((a, b) => a.sort_order - b.sort_order);
 
-  // Build a lookup: day → slotId → TimetableEntry[]
+  // Fetch groups for every batch in parallel – results are cached per batch.
+  const groupQueries = useQueries({
+    queries: batches.map((batch) => ({
+      queryKey: ['batch-groups', batch.id],
+      queryFn: () => getBatchGroups(batch.id),
+      staleTime: 60_000,
+    })),
+  });
+
+  // Build a map: batchId → BatchGroup[]
+  const groupsByBatch = new Map<number, BatchGroup[]>();
+  batches.forEach((batch, i) => {
+    groupsByBatch.set(batch.id, groupQueries[i]?.data ?? []);
+  });
+
+  // Build a lookup: "day:slotId" → TimetableEntry[]
   const lookup = new Map<string, TimetableEntry[]>();
   for (const e of entries) {
     const key = `${e.day}:${e.time_slot_id}`;
@@ -44,14 +63,31 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(func
     return lookup.get(`${day}:${slotId}`) ?? [];
   }
 
-  function openCell(day: DayOfWeek, slot: TimeSlot, existingEntry?: TimetableEntry, batchIdOverride?: number) {
+  function openCell(
+    day: DayOfWeek,
+    slot: TimeSlot,
+    existingEntry?: TimetableEntry,
+    batchIdOverride?: number,
+    groupIdOverride?: number,
+  ) {
     if (slot.is_break) return;
     if (existingEntry) {
       setModal({ entry: existingEntry });
     } else {
-      setModal({ cell: { day, slotId: slot.id, batchId: batchIdOverride ?? filterBatchId ?? undefined } });
+      setModal({
+        cell: {
+          day,
+          slotId: slot.id,
+          batchId: batchIdOverride ?? filterBatchId ?? undefined,
+          groupId: groupIdOverride,
+        },
+      });
     }
   }
+
+  // Batches to render in each cell
+  const batchesToShow =
+    filterBatchId !== null ? batches.filter((b) => b.id === filterBatchId) : batches;
 
   const colWidth = 180;
   const dayColWidth = 110;
@@ -115,51 +151,103 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(func
                 >
                   {day}
                 </td>
+
                 {sortedSlots.map((slot) => {
                   if (slot.is_break) {
                     return (
                       <td
                         key={slot.id}
-                        className="px-1 py-2 border-r border-slate-200 last:border-r-0
-                                   bg-amber-50 text-center"
-                      >
-                      </td>
+                        className="px-1 py-2 border-r border-slate-200 last:border-r-0 bg-amber-50 text-center"
+                      />
                     );
                   }
 
                   const cellEntries = getEntries(day, slot.id);
-                  const isEmpty = cellEntries.length === 0;
 
                   return (
                     <td
                       key={slot.id}
                       className="px-2 py-2 border-r border-slate-200 last:border-r-0 align-top"
                     >
-                      <div className="flex flex-col gap-1 h-full">
-                        {/* Display existing entries */}
-                        {cellEntries.map((entry) => (
-                          <EntryCard
-                            key={entry.id}
-                            entry={entry}
-                            onClick={() => openCell(day, slot, entry)}
-                          />
-                        ))}
-                        
-                        {/* If viewing a single batch, show one Add button if empty */}
-                        {filterBatchId !== null && isEmpty && (
-                          <button
-                            onClick={() => openCell(day, slot)}
-                            className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:border-brand-500/50 hover:text-brand-600 hover:bg-brand-50 min-h-[56px] transition-all duration-150 text-xs group"
-                          >
-                            <Plus size={12} className="group-hover:scale-110 transition-transform" />
-                            <span>Add</span>
-                          </button>
-                        )}
+                      <div className="flex flex-col gap-1.5 h-full">
+                        {batchesToShow.map((batch) => {
+                          const batchEntries = cellEntries.filter((e) => e.batch_id === batch.id);
+                          const groups = groupsByBatch.get(batch.id) ?? [];
 
-                        {/* If viewing All Batches, show templates for any batch that has no entry here */}
-                        {filterBatchId === null && batches.map(batch => {
-                          const hasEntry = cellEntries.some(e => e.batch.id === batch.id);
-                          if (hasEntry) return null;
+                          // ── 1. Theory entry (no group_id) takes precedence ────────────
+                          const theoryEntry = batchEntries.find((e) => e.group_id == null);
+                          if (theoryEntry) {
+                            return (
+                              <EntryCard
+                                key={batch.id}
+                                entry={theoryEntry}
+                                onClick={() => openCell(day, slot, theoryEntry)}
+                              />
+                            );
+                          }
+
+                          // ── 2. Batch has groups → per-group skeleton rows ──────────────
+                          if (groups.length > 0) {
+                            return (
+                              <div key={batch.id} className="flex flex-col gap-1">
+                                {groups.map((group) => {
+                                  const labEntry = batchEntries.find(
+                                    (e) => e.group_id === group.id,
+                                  );
+                                  if (labEntry) {
+                                    return (
+                                      <EntryCard
+                                        key={labEntry.id}
+                                        entry={labEntry}
+                                        onClick={() => openCell(day, slot, labEntry)}
+                                      />
+                                    );
+                                  }
+                                  return (
+                                    <EmptyGroupCard
+                                      key={group.id}
+                                      batch={batch}
+                                      group={group}
+                                      onClick={() =>
+                                        openCell(day, slot, undefined, batch.id, group.id)
+                                      }
+                                    />
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+
+                          // ── 3. No groups, but has entries ─────────────────────────────
+                          if (batchEntries.length > 0) {
+                            return (
+                              <div key={batch.id} className="flex flex-col gap-1">
+                                {batchEntries.map((e) => (
+                                  <EntryCard
+                                    key={e.id}
+                                    entry={e}
+                                    onClick={() => openCell(day, slot, e)}
+                                  />
+                                ))}
+                              </div>
+                            );
+                          }
+
+                          // ── 4. Empty slot, no groups ──────────────────────────────────
+                          if (filterBatchId !== null) {
+                            // Single-batch view: large Add button
+                            return (
+                              <button
+                                key={batch.id}
+                                onClick={() => openCell(day, slot)}
+                                className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:border-brand-500/50 hover:text-brand-600 hover:bg-brand-50 min-h-[56px] transition-all duration-150 text-xs group w-full"
+                              >
+                                <Plus size={12} className="group-hover:scale-110 transition-transform" />
+                                <span>Add</span>
+                              </button>
+                            );
+                          }
+                          // All-batches view: small batch placeholder
                           return (
                             <EmptyBatchCard
                               key={batch.id}
@@ -185,6 +273,7 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(func
           defaultDay={modal.cell?.day}
           defaultSlotId={modal.cell?.slotId}
           defaultBatchId={modal.cell?.batchId}
+          defaultGroupId={modal.cell?.groupId}
           onClose={() => setModal(null)}
           onSaved={() => setModal(null)}
         />
@@ -248,6 +337,43 @@ function EntryCard({ entry, onClick }: { entry: TimetableEntry; onClick: () => v
   );
 }
 
+// ── Empty Group Card ──────────────────────────────────────────────────────────
+
+/**
+ * Skeleton placeholder shown when a batch group has no lab entry in this slot.
+ * Clicking it opens the entry modal pre-filled with that group.
+ */
+function EmptyGroupCard({
+  batch,
+  group,
+  onClick,
+}: {
+  batch: Batch;
+  group: BatchGroup;
+  onClick: () => void;
+}) {
+  const borderColor = hexAlpha(batch.color, 0.35);
+  const bgColor = hexAlpha(batch.color, 0.05);
+  const textColor = isLightColor(batch.color) ? darken(batch.color, 0.6) : darken(batch.color, 0.15);
+
+  return (
+    <button
+      onClick={onClick}
+      title={`Add lab for ${group.name}`}
+      className="w-full flex items-center justify-between gap-1.5 py-1.5 px-2 rounded-lg border border-dashed group transition-all duration-150"
+      style={{ backgroundColor: bgColor, borderColor, color: textColor, minHeight: '38px' }}
+    >
+      <span className="text-[10px] font-semibold leading-none truncate flex-1 text-left">
+        {group.name}
+      </span>
+      <Plus
+        size={10}
+        className="group-hover:scale-125 transition-transform opacity-50 flex-shrink-0"
+      />
+    </button>
+  );
+}
+
 // ── Empty Batch Card ──────────────────────────────────────────────────────────
 
 function EmptyBatchCard({ batch, onClick }: { batch: Batch; onClick: () => void }) {
@@ -263,7 +389,7 @@ function EmptyBatchCard({ batch, onClick }: { batch: Batch; onClick: () => void 
         backgroundColor: batchBg,
         borderColor: borderColor,
         color: textColor,
-        minHeight: '24px'
+        minHeight: '24px',
       }}
       title={`Add subject for ${batch.name}`}
     >
