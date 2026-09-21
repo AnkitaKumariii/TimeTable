@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 
 import {
-  createBatch, createEntry, createEntriesBulk, createFaculty, createSubject, createRoom,
+  createBatch, createEntriesBulk, createFaculty, createSubject, createRoom,
   deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
   updateEntry, getEntries, getBatchGroups, getTimeSlots,
 } from '../api';

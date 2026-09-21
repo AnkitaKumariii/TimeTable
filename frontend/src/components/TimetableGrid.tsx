@@ -92,7 +92,7 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(
      */
     const gridRows = useMemo<GridRow[]>(
       () =>
-        batchesToShow.flatMap((batch) => {
+        batchesToShow.flatMap((batch): GridRow[] => {
           // While groups are still loading, treat as no-group to keep rowSpan stable;
           // the pending indicator on the batch cell signals the transient state.
           const groups = groupsByBatch.get(batch.id) ?? [];
@@ -319,7 +319,6 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(
         {/* ── Theory / Lab picker ───────────────────────────────────────────── */}
         {typePicker && (
           <TypePickerModal
-            picker={typePicker}
             onTheory={() => {
               const p = typePicker;
               setTypePicker(null);
@@ -356,12 +355,10 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(
 // ── Theory / Lab type picker modal ────────────────────────────────────────────
 
 function TypePickerModal({
-  picker,
   onTheory,
   onLab,
   onClose,
 }: {
-  picker: TypePickerState;
   onTheory: () => void;
   onLab: () => void;
   onClose: () => void;

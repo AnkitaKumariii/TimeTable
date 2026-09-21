@@ -51,7 +51,8 @@ function buildCsv(
       const text = cell
         .map((e) => {
           const group = e.group ? ` (${e.group.name})` : '';
-          return `${e.subject.short_code} | ${e.batch.name}${group} | ${e.faculty.name} | ${e.room?.name ?? 'Unassigned'}`;
+          const facultyNames = e.faculties.map(f => f.name).join(', ');
+          return `${e.subject.short_code} | ${e.batch.name}${group} | ${facultyNames} | ${e.room?.name ?? 'Unassigned'}`;
         })
         .join(' / ');
       return escape(text);
@@ -386,11 +387,15 @@ async function buildPdf(
         pdf.text(batchLabel, tx + 1, lineY(2), { maxWidth: w - 6 });
 
         // Faculty
-        const roleLabel = entry.faculty.role === 'teaching_assistant' ? 'TA' : 'Prof.';
+        // Just show the primary role if there are multiple
+        const primaryFaculty = entry.faculties[0];
+        const roleLabel = primaryFaculty?.role === 'teaching_assistant' ? 'TA' : 'Prof.';
+        const facultyNames = entry.faculties.map(f => f.name).join(', ');
+        
         pdf.setFont(fontName, 'normal');
         pdf.setFontSize(5.5);
         pdf.setTextColor(71, 85, 105);
-        pdf.text(`${roleLabel} ${entry.faculty.name}`, tx, lineY(3), { maxWidth: w - 4 });
+        pdf.text(`${roleLabel} ${facultyNames}`, tx, lineY(3), { maxWidth: w - 4 });
 
         // Room
         pdf.setTextColor(100, 116, 139);
