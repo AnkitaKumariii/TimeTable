@@ -15,19 +15,21 @@ export function TimetablePage() {
   const [isExporting, setIsExporting] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
 
-  const { data: batches = [] } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
-  const { data: slots = [] } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
-  const { data: activeDaysData } = useQuery({ queryKey: ['active-days'], queryFn: getActiveDays });
+  const { data: batches = [], isFetching: isBatchesFetching } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
+  const { data: slots = [], isFetching: isSlotsFetching } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
+  const { data: activeDaysData, isFetching: isDaysFetching } = useQuery({ queryKey: ['active-days'], queryFn: getActiveDays });
 
   const activeDays: DayOfWeek[] = activeDaysData?.active_days ?? [
     'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
   ];
 
-  const { data: entries = [], isLoading, refetch } = useQuery({
+  const { data: entries = [], isFetching: isEntriesFetching, refetch } = useQuery({
     queryKey: ['timetable-entries', filterBatch],
     queryFn: () => getEntries(filterBatch !== 'all' ? { batch_id: filterBatch } : {}),
     refetchOnWindowFocus: true,
   });
+
+  const isFetching = isBatchesFetching || isSlotsFetching || isDaysFetching || isEntriesFetching;
 
   const selectedBatch: Batch | undefined = batches.find((b) => b.id === filterBatch);
   const downloadLabel = filterBatch === 'all' ? 'All_Batches' : (selectedBatch?.name ?? 'Timetable');
@@ -74,7 +76,7 @@ export function TimetablePage() {
             className="btn-ghost p-2 rounded-lg"
             title="Refresh"
           >
-            <RefreshCw size={15} className={isLoading ? 'animate-spin text-brand-600' : ''} />
+            <RefreshCw size={15} className={isFetching ? 'animate-spin text-brand-600' : ''} />
           </button>
 
           {/* Download */}
@@ -83,7 +85,7 @@ export function TimetablePage() {
               onClick={() => setShowDownloadMenu(!showDownloadMenu)}
               className="btn btn-secondary flex items-center gap-2"
               title="Download timetable"
-              disabled={isExporting}
+              disabled={isExporting || isFetching}
             >
               {isExporting ? (
                 <RefreshCw size={14} className="animate-spin" />
@@ -100,7 +102,8 @@ export function TimetablePage() {
                   <li>
                     <button
                       onClick={() => handleDownload('csv')}
-                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 text-slate-600 hover:bg-slate-100 transition-colors"
+                      disabled={isExporting || isFetching}
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Sheet size={14} className="text-green-600" />
                       Download CSV
@@ -109,7 +112,8 @@ export function TimetablePage() {
                   <li>
                     <button
                       onClick={() => handleDownload('pdf')}
-                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 text-slate-600 hover:bg-slate-100 transition-colors"
+                      disabled={isExporting || isFetching}
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2.5 text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FileText size={14} className="text-red-500" />
                       Download PDF
@@ -145,7 +149,7 @@ export function TimetablePage() {
                 <ul className="py-1">
                   <li>
                     <button
-                      onClick={() => { setFilterBatch('all'); setShowBatchMenu(false); }}
+                      onClick={() => { setFilterBatch('all'); setShowBatchMenu(false); setShowDownloadMenu(false); }}
                       className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100
                         ${filterBatch === 'all' ? 'text-brand-600 bg-brand-500/10' : 'text-slate-600'}`}
                     >
@@ -155,7 +159,7 @@ export function TimetablePage() {
                   {batches.map((b) => (
                     <li key={b.id}>
                       <button
-                        onClick={() => { setFilterBatch(b.id); setShowBatchMenu(false); }}
+                        onClick={() => { setFilterBatch(b.id); setShowBatchMenu(false); setShowDownloadMenu(false); }}
                         className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2.5
                           transition-colors hover:bg-slate-100
                           ${filterBatch === b.id ? 'text-brand-600 bg-brand-500/10' : 'text-slate-600'}`}

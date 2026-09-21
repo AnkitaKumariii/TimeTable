@@ -48,9 +48,9 @@ def _build_engine():
 
                 @isolation_level.setter
                 def isolation_level(self, value):
-                    # libsql-experimental does not support dynamic isolation_level
-                    # changes — silently ignore them so SQLAlchemy doesn't crash.
-                    pass
+                    if value != self._c.isolation_level:
+                        import sqlalchemy.exc
+                        raise ValueError(f"unsupported isolation_level for libsql: {value}")
 
                 def __getattr__(self, name):
                     return getattr(self._c, name)
