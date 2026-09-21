@@ -107,6 +107,11 @@ export const createEntry = (data: EntryCreate, force = false) =>
     .post<EntryCreateResponse>(`/timetable/entries?force=${force}`, data)
     .then((r) => r.data);
 
+export const createEntriesBulk = (data: EntryCreate[], force = false) =>
+  apiClient
+    .post<EntryCreateResponse[] | EntryCreateResponse>(`/timetable/entries/bulk?force=${force}`, data)
+    .then((r) => r.data);
+
 export const updateEntry = (id: number, data: EntryUpdate, force = false) =>
   apiClient
     .put<EntryCreateResponse>(`/timetable/entries/${id}?force=${force}`, data)

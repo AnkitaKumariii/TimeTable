@@ -87,18 +87,39 @@ def _check_conflicts(
         return EntryCheckResponse(status="ok")
 
     # ── 0. Weekly Limit Check ──────────────────────────────────────────────────
-    usage_q = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id)
-    if exclude_entry_id:
-        usage_q = usage_q.filter(TimetableEntry.id != exclude_entry_id)
-    usage_count = usage_q.count()
-    if usage_count >= subject.hours_per_week:
-        return EntryCheckResponse(
-            status="conflict",
-            message=(
-                f"⚠️ Cannot add: {subject.name} exceeds its limit of {subject.hours_per_week} hours per week. "
-                f"(Currently allotted: {usage_count})"
-            )
+    if subject.type == SubjectType.lab and group_id is not None:
+        # Lab hours_per_week is the limit PER GROUP, not globally.
+        # Count only entries for this specific group.
+        group_usage_q = db.query(TimetableEntry).filter(
+            TimetableEntry.subject_id == subject_id,
+            TimetableEntry.group_id == group_id,
         )
+        if exclude_entry_id:
+            group_usage_q = group_usage_q.filter(TimetableEntry.id != exclude_entry_id)
+        group_usage_count = group_usage_q.count()
+        if group_usage_count >= subject.hours_per_week:
+            return EntryCheckResponse(
+                status="conflict",
+                message=(
+                    f"⚠️ Cannot add: {subject.name} already has {group_usage_count} of "
+                    f"{subject.hours_per_week} allowed lab hours per week for this group."
+                )
+            )
+    else:
+        # Theory: hours_per_week is a global limit across all entries.
+        usage_q = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id)
+        if exclude_entry_id:
+            usage_q = usage_q.filter(TimetableEntry.id != exclude_entry_id)
+        usage_count = usage_q.count()
+        if usage_count >= subject.hours_per_week:
+            return EntryCheckResponse(
+                status="conflict",
+                message=(
+                    f"⚠️ Cannot add: {subject.name} exceeds its limit of {subject.hours_per_week} hours per week. "
+                    f"(Currently allotted: {usage_count})"
+                )
+            )
+
 
     # ── 1. Hard conflict: same faculty + same slot + DIFFERENT batch ────────────
     q = (
@@ -349,6 +370,29 @@ def create_entry(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    entry_response = _create_single_entry(db, payload, force)
+    
+    # If it's a warning and we're not forcing, entry is not created
+    if entry_response.status == "warning" and not force:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "warning",
+                "message": entry_response.message,
+                "conflicting_entry": entry_response.conflicting_entry.model_dump() if entry_response.conflicting_entry else None,
+                "entry": None,
+            },
+        )
+        
+    db.commit()
+    
+    # Load relationships for the response
+    full = _load_entry(db, entry_response.entry.id)
+    entry_response.entry = EntryOut.model_validate(full)
+    return entry_response
+
+def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> EntryCreateResponse:
     # Validate FK existence
     for model, fid, label in [
         (Batch, payload.batch_id, "Batch"),
@@ -413,31 +457,75 @@ def create_entry(
     if check.status == "conflict":
         raise HTTPException(status_code=409, detail=check.message)
 
-    # Soft warning → return 200 with warning info unless forced
+    # Soft warning → return warning info unless forced
     if check.status == "warning" and not force:
-        # Return 200 with warning — frontend decides whether to re-submit with force=true
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "warning",
-                "message": check.message,
-                "conflicting_entry": check.conflicting_entry.model_dump() if check.conflicting_entry else None,
-                "entry": None,
-            },
+        return EntryCreateResponse(
+            status="warning",
+            entry=None, # type: ignore
+            message=check.message,
+            conflicting_entry=check.conflicting_entry,
         )
 
     entry = TimetableEntry(**payload.model_dump())
     db.add(entry)
-    db.commit()
+    db.flush() # flush so it's visible to subsequent checks in the same transaction (e.g. bulk insert)
 
-    full = _load_entry(db, entry.id)
     return EntryCreateResponse(
         status=check.status if check.status == "warning" else "ok",
-        entry=EntryOut.model_validate(full),
+        entry=entry, # type: ignore
         message=check.message,
         conflicting_entry=check.conflicting_entry,
     )
+
+@router.post(
+    "/entries/bulk",
+    response_model=List[EntryCreateResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Create multiple entries in a single transaction",
+)
+def create_entries_bulk(
+    payloads: List[EntryCreate],
+    force: bool = Query(default=False, description="Set true to save despite a warning"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Creates multiple entries. If any entry has a hard conflict (409), the entire
+    transaction is rolled back and an HTTPException is raised.
+    If there's a warning and force=False, returns the warning without committing.
+    """
+    try:
+        responses = []
+        for payload in payloads:
+            resp = _create_single_entry(db, payload, force)
+            if resp.status == "warning" and not force:
+                db.rollback()
+                # Return the warning response as a 200 JSON Response (same as single entry)
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "warning",
+                        "message": resp.message,
+                        "conflicting_entry": resp.conflicting_entry.model_dump() if resp.conflicting_entry else None,
+                        "entry": None,
+                    },
+                )
+            responses.append(resp)
+            
+        db.commit()
+        
+        # Load relationships for all inserted entries
+        final_responses = []
+        for resp in responses:
+            full = _load_entry(db, resp.entry.id)
+            resp.entry = EntryOut.model_validate(full)
+            final_responses.append(resp)
+            
+        return final_responses
+    except Exception as e:
+        db.rollback()
+        raise e
 
 
 @router.put("/entries/{entry_id}", response_model=EntryCreateResponse)

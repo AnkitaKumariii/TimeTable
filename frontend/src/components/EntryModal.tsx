@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 
 import {
-  createBatch, createEntry, createFaculty, createSubject, createRoom,
+  createBatch, createEntry, createEntriesBulk, createFaculty, createSubject, createRoom,
   deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
   updateEntry, getEntries, getBatchGroups, getTimeSlots,
 } from '../api';
@@ -189,7 +189,34 @@ export function EntryModal({
   const [quickCreate, setQuickCreate] = useState<{ type: 'batch' | 'subject' | 'faculty' | 'room'; initial: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
 
-  const isComplete = batchId != null && subjectId != null && facultyId != null && roomId != null && day != null && slotId != null && selectedSubject != null && (selectedSubject.type !== 'lab' || groupId != null);
+  // True when the currently selected group already has a lab entry for this subject
+  // (on any day), meaning saving would be blocked anyway. Used to grey out Save.
+  //
+  // Exception: when editing an entry that has NOT changed its subject or group, the
+  // sibling auto-fill slots (same subject_id + group_id, different time_slot_id) are
+  // legitimate — skip the conflict check in that case.
+  const editingUnchangedAssignment =
+    !!existingEntry &&
+    existingEntry.subject_id === subjectId &&
+    existingEntry.group_id === groupId;
+
+  const isGroupConflicted =
+    !editingUnchangedAssignment &&
+    selectedSubject?.type === 'lab' &&
+    groupId != null &&
+    entries.some(
+      (e) => e.subject_id === subjectId && e.group_id === groupId && e.id !== existingEntry?.id,
+    );
+
+  const isComplete =
+    batchId != null &&
+    subjectId != null &&
+    facultyId != null &&
+    roomId != null &&
+    day != null &&
+    slotId != null &&
+    selectedSubject != null &&
+    (selectedSubject.type !== 'lab' || (groupId != null && !isGroupConflicted));
   const isEditing = !!existingEntry;
 
   const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
@@ -201,56 +228,14 @@ export function EntryModal({
     setConflict({ kind: 'none' });
   }
 
-  /**
-   * After the first lab slot is saved, automatically create entries for the
-   * remaining (hours_per_week - 1) consecutive non-break slots on the same day.
-   * Uses force=true so minor back-to-back warnings don't block auto-fill.
-   * Stops at the first hard conflict (409).
-   */
-  async function performAutoFill(baseSlotId: number): Promise<{ filled: number; failed: number }> {
-    if (!selectedSubject || selectedSubject.type !== 'lab' || selectedSubject.hours_per_week <= 1) {
-      return { filled: 0, failed: 0 };
-    }
-    const currentSlot = slots.find((s) => s.id === baseSlotId);
-    if (!currentSlot) return { filled: 0, failed: 0 };
-
-    // Next N-1 non-break slots ordered by sort_order
-    const nextSlots = slots
-      .filter((s) => !s.is_break && s.sort_order > currentSlot.sort_order)
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .slice(0, selectedSubject.hours_per_week - 1);
-
-    let filled = 0;
-    let failed = 0;
-    for (const slot of nextSlots) {
-      try {
-        await createEntry({
-          batch_id: batchId!,
-          group_id: groupId,
-          subject_id: subjectId!,
-          faculty_id: facultyId!,
-          room_id: roomId!,
-          day: day!,
-          time_slot_id: slot.id,
-        }, true); // force=true: skip back-to-back warnings for auto-fill
-        filled++;
-      } catch {
-        failed++;
-        break; // stop at first hard conflict
-      }
-    }
-    return { filled, failed };
-  }
-
   async function save(force = false) {
     if (!isComplete) return;
     setSaveStatus('saving');
     setConflict({ kind: 'none' });
 
     try {
-      let res;
       if (isEditing) {
-        res = await updateEntry(existingEntry.id, {
+        const res = await updateEntry(existingEntry.id, {
           batch_id: batchId!,
           group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
@@ -260,8 +245,20 @@ export function EntryModal({
           time_slot_id: slotId!,
           version: existingEntry.version,
         }, force);
+
+        if (res.status === 'warning' && !force) {
+          setSaveStatus('idle');
+          setConflict({ kind: 'warning', message: res.message, conflicting: res.conflicting_entry });
+          return;
+        }
+        setSaveStatus('saved');
+        qc.invalidateQueries({ queryKey: ['timetable-entries'] });
+        toast.success('Entry updated');
+        onSaved();
       } else {
-        res = await createEntry({
+        // New entry creation — use bulk endpoint to ensure "all-or-nothing" auto-fill for labs
+        const payloads = [];
+        const basePayload = {
           batch_id: batchId!,
           group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
@@ -269,43 +266,57 @@ export function EntryModal({
           room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
-        }, force);
-      }
+        };
+        payloads.push(basePayload);
 
-      if (res.status === 'warning') {
-        // backend returned a warning even with force=true? shouldn't happen
-        // but handle gracefully:
-        setSaveStatus('idle');
-        setConflict({ kind: 'warning', message: res.message, conflicting: res.conflicting_entry });
-        return;
-      }
-
-      // Auto-fill consecutive lab slots (new entries only)
-      let autoFilled = 0;
-      let autoFailed = 0;
-      if (!isEditing && selectedSubject?.type === 'lab' && slotId != null) {
-        ({ filled: autoFilled, failed: autoFailed } = await performAutoFill(slotId));
-      }
-
-      setSaveStatus('saved');
-      qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-
-      if (autoFilled > 0 || autoFailed > 0) {
-        if (autoFailed === 0) {
-          toast.success(`Lab scheduled — ${autoFilled + 1} consecutive slots filled`);
-        } else {
-          toast(`Lab partially scheduled: ${autoFilled + 1} slot(s) filled, ${autoFailed} slot(s) could not be added`, { icon: '⚠️' });
+        let isAutoFilling = false;
+        if (selectedSubject?.type === 'lab' && selectedSubject.hours_per_week > 1) {
+          const currentSlot = slots.find((s) => s.id === slotId);
+          if (currentSlot) {
+            const sortedAfter = slots
+              .filter((s) => s.sort_order > currentSlot.sort_order)
+              .sort((a, b) => a.sort_order - b.sort_order);
+            
+            const nextSlots = [];
+            let lastOrder = currentSlot.sort_order;
+            
+            for (const s of sortedAfter) {
+              if (s.is_break || s.sort_order !== lastOrder + 1) break;
+              nextSlots.push(s);
+              lastOrder = s.sort_order;
+              if (nextSlots.length === selectedSubject.hours_per_week - 1) break;
+            }
+            
+            for (const slot of nextSlots) {
+              payloads.push({ ...basePayload, time_slot_id: slot.id });
+            }
+            if (nextSlots.length > 0) isAutoFilling = true;
+          }
         }
-      } else {
-        toast.success(isEditing ? 'Entry updated' : 'Entry added');
-      }
 
-      onSaved();
+        const res = await createEntriesBulk(payloads, force);
+
+        // If not forced and backend returned a single warning response
+        if (!Array.isArray(res) && res.status === 'warning') {
+          setSaveStatus('idle');
+          setConflict({ kind: 'warning', message: res.message, conflicting: res.conflicting_entry });
+          return;
+        }
+
+        setSaveStatus('saved');
+        qc.invalidateQueries({ queryKey: ['timetable-entries'] });
+        
+        if (isAutoFilling) {
+          toast.success(`Lab scheduled — ${payloads.length} consecutive slots filled`);
+        } else {
+          toast.success('Entry added');
+        }
+        onSaved();
+      }
     } catch (err: unknown) {
       setSaveStatus('error');
       if (axios.isAxiosError(err)) {
         const detail = err.response?.data?.detail ?? err.message;
-        // 409 from backend = hard conflict or version conflict
         if (err.response?.status === 409) {
           setConflict({ kind: 'hard', message: String(detail) });
         } else {
@@ -316,75 +327,9 @@ export function EntryModal({
   }
 
   async function handleChange() {
-    if (!isComplete) return;
-    // Check for warning state before saving
-    setSaveStatus('saving');
-    setConflict({ kind: 'none' });
-
-    try {
-      let res;
-      if (isEditing) {
-        res = await updateEntry(existingEntry.id, {
-          batch_id: batchId!,
-          group_id: selectedSubject?.type === 'lab' ? groupId : null,
-          subject_id: subjectId!,
-          faculty_id: facultyId!,
-          room_id: roomId!,
-          day: day!,
-          time_slot_id: slotId!,
-          version: existingEntry.version,
-        }, false);
-      } else {
-        res = await createEntry({
-          batch_id: batchId!,
-          group_id: selectedSubject?.type === 'lab' ? groupId : null,
-          subject_id: subjectId!,
-          faculty_id: facultyId!,
-          room_id: roomId!,
-          day: day!,
-          time_slot_id: slotId!,
-        }, false);
-      }
-
-      if (res.status === 'warning' && res.entry == null) {
-        // Server returned warning, no entry saved yet
-        setSaveStatus('idle');
-        setConflict({ kind: 'warning', message: res.message, conflicting: res.conflicting_entry });
-        return;
-      }
-
-      // Auto-fill consecutive lab slots (new entries only)
-      let autoFilled = 0;
-      let autoFailed = 0;
-      if (!isEditing && selectedSubject?.type === 'lab' && slotId != null) {
-        ({ filled: autoFilled, failed: autoFailed } = await performAutoFill(slotId));
-      }
-
-      setSaveStatus('saved');
-      qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-
-      if (autoFilled > 0 || autoFailed > 0) {
-        if (autoFailed === 0) {
-          toast.success(`Lab scheduled — ${autoFilled + 1} consecutive slots filled`);
-        } else {
-          toast(`Lab partially scheduled: ${autoFilled + 1} slot(s) filled, ${autoFailed} slot(s) could not be added`, { icon: '⚠️' });
-        }
-      } else {
-        toast.success(isEditing ? 'Entry updated' : 'Entry added');
-      }
-
-      onSaved();
-    } catch (err: unknown) {
-      setSaveStatus('error');
-      if (axios.isAxiosError(err)) {
-        const detail = err.response?.data?.detail ?? err.message;
-        if (err.response?.status === 409) {
-          setConflict({ kind: 'hard', message: String(detail) });
-        } else {
-          toast.error(String(detail));
-        }
-      }
-    }
+    // handleChange is effectively `save(false)` now, handled cleanly by the above logic.
+    // It's called when a user clicks a quick-change option directly.
+    return save(false);
   }
 
   async function handleDelete() {
@@ -447,7 +392,11 @@ export function EntryModal({
               {filteredSubjects.map((s) => {
                 const isSelected = subjectId === s.id;
                 const usageCount = entries.filter((e) => e.subject_id === s.id && (!existingEntry || e.id !== existingEntry.id)).length;
-                const isOverLimit = usageCount >= s.hours_per_week;
+                // Labs: each group has its own hours_per_week quota, so total capacity = hours × groups.
+                // Theory: global limit = hours_per_week.
+                const numGroups = s.type === 'lab' ? (groups.length || 1) : 1;
+                const effectiveLimit = s.hours_per_week * numGroups;
+                const isOverLimit = usageCount >= effectiveLimit;
 
                 return (
                   <button
@@ -466,7 +415,7 @@ export function EntryModal({
                     <span className="text-xs font-bold" style={{ color: isSelected ? s.color : 'inherit' }}>{s.short_code}</span>
                     <span className="text-[10px] text-slate-500 truncate max-w-[120px]">{s.name}</span>
                     <span className={`text-[9px] mt-1 px-1.5 py-0.5 rounded font-mono ${isOverLimit && !isSelected ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
-                      {usageCount}/{s.hours_per_week} hrs
+                      {usageCount}/{effectiveLimit} hrs{numGroups > 1 ? ` (${s.hours_per_week}×${numGroups})` : ''}
                     </span>
                   </button>
                 );
