@@ -7,7 +7,7 @@ import axios from 'axios';
 import {
   createBatch, createEntry, createFaculty, createSubject, createRoom,
   deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
-  updateEntry, getEntries, getBatchGroups,
+  updateEntry, getEntries, getBatchGroups, getTimeSlots,
 } from '../api';
 import type {
   Batch, ConflictingEntry, DayOfWeek, FacultyMember, Room,
@@ -163,6 +163,7 @@ export function EntryModal({
   const { data: faculty = [] } = useQuery({ queryKey: ['faculty'], queryFn: getFaculty });
   const { data: rooms = [] } = useQuery({ queryKey: ['rooms'], queryFn: getRooms });
   const { data: entries = [] } = useQuery({ queryKey: ['timetable-entries'], queryFn: () => getEntries() });
+  const { data: slots = [] } = useQuery({ queryKey: ['time-slots'], queryFn: getTimeSlots });
 
   const [batchId, setBatchId] = useState<number | null>(existingEntry?.batch_id ?? defaultBatchId ?? null);
   const [groupId, setGroupId] = useState<number | null>(existingEntry?.group_id ?? null);
@@ -195,6 +196,47 @@ export function EntryModal({
     if (id !== batchId) { setSubjectId(null); setGroupId(null); }
     setBatchId(id);
     setConflict({ kind: 'none' });
+  }
+
+  /**
+   * After the first lab slot is saved, automatically create entries for the
+   * remaining (hours_per_week - 1) consecutive non-break slots on the same day.
+   * Uses force=true so minor back-to-back warnings don't block auto-fill.
+   * Stops at the first hard conflict (409).
+   */
+  async function performAutoFill(baseSlotId: number): Promise<{ filled: number; failed: number }> {
+    if (!selectedSubject || selectedSubject.type !== 'lab' || selectedSubject.hours_per_week <= 1) {
+      return { filled: 0, failed: 0 };
+    }
+    const currentSlot = slots.find((s) => s.id === baseSlotId);
+    if (!currentSlot) return { filled: 0, failed: 0 };
+
+    // Next N-1 non-break slots ordered by sort_order
+    const nextSlots = slots
+      .filter((s) => !s.is_break && s.sort_order > currentSlot.sort_order)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .slice(0, selectedSubject.hours_per_week - 1);
+
+    let filled = 0;
+    let failed = 0;
+    for (const slot of nextSlots) {
+      try {
+        await createEntry({
+          batch_id: batchId!,
+          group_id: groupId,
+          subject_id: subjectId!,
+          faculty_id: facultyId!,
+          room_id: roomId!,
+          day: day!,
+          time_slot_id: slot.id,
+        }, true); // force=true: skip back-to-back warnings for auto-fill
+        filled++;
+      } catch {
+        failed++;
+        break; // stop at first hard conflict
+      }
+    }
+    return { filled, failed };
   }
 
   async function save(force = false) {
@@ -235,9 +277,26 @@ export function EntryModal({
         return;
       }
 
+      // Auto-fill consecutive lab slots (new entries only)
+      let autoFilled = 0;
+      let autoFailed = 0;
+      if (!isEditing && selectedSubject?.type === 'lab' && slotId != null) {
+        ({ filled: autoFilled, failed: autoFailed } = await performAutoFill(slotId));
+      }
+
       setSaveStatus('saved');
       qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-      toast.success(isEditing ? 'Entry updated' : 'Entry added');
+
+      if (autoFilled > 0 || autoFailed > 0) {
+        if (autoFailed === 0) {
+          toast.success(`Lab scheduled — ${autoFilled + 1} consecutive slots filled`);
+        } else {
+          toast(`Lab partially scheduled: ${autoFilled + 1} slot(s) filled, ${autoFailed} slot(s) could not be added`, { icon: '⚠️' });
+        }
+      } else {
+        toast.success(isEditing ? 'Entry updated' : 'Entry added');
+      }
+
       onSaved();
     } catch (err: unknown) {
       setSaveStatus('error');
@@ -291,9 +350,26 @@ export function EntryModal({
         return;
       }
 
+      // Auto-fill consecutive lab slots (new entries only)
+      let autoFilled = 0;
+      let autoFailed = 0;
+      if (!isEditing && selectedSubject?.type === 'lab' && slotId != null) {
+        ({ filled: autoFilled, failed: autoFailed } = await performAutoFill(slotId));
+      }
+
       setSaveStatus('saved');
       qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-      toast.success(isEditing ? 'Entry updated' : 'Entry added');
+
+      if (autoFilled > 0 || autoFailed > 0) {
+        if (autoFailed === 0) {
+          toast.success(`Lab scheduled — ${autoFilled + 1} consecutive slots filled`);
+        } else {
+          toast(`Lab partially scheduled: ${autoFilled + 1} slot(s) filled, ${autoFailed} slot(s) could not be added`, { icon: '⚠️' });
+        }
+      } else {
+        toast.success(isEditing ? 'Entry updated' : 'Entry added');
+      }
+
       onSaved();
     } catch (err: unknown) {
       setSaveStatus('error');
@@ -416,19 +492,60 @@ export function EntryModal({
             )}
           </div>
 
-                    {/* Lab Group */}
+          {/* Lab Group */}
           {selectedSubject?.type === 'lab' && (
             <div className="animate-slide-up">
               <label className="label">Lab Group</label>
-              <Combobox
-                id="modal-group"
-                options={groups.map((g) => ({ value: g.id, label: g.name }))}
-                value={groupId}
-                onChange={(v) => { setGroupId(v as number); setConflict({ kind: 'none' }); }}
-                placeholder="Select lab group…"
-              />
-              {groups.length === 0 && (
+              {groups.length === 0 ? (
                 <p className="text-xs text-amber-600 mt-1">No groups available in this batch. Add groups in Settings.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {groups.map((g) => {
+                    const isSelected = groupId === g.id;
+                    // A group is "already scheduled" if it has any entry for this lab subject
+                    // (on any day), excluding the entry currently being edited.
+                    const scheduledEntry = entries.find(
+                      (e) => e.subject_id === subjectId && e.group_id === g.id && e.id !== existingEntry?.id
+                    );
+                    const isScheduled = !!scheduledEntry;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          if (!isScheduled) { setGroupId(g.id); setConflict({ kind: 'none' }); }
+                        }}
+                        disabled={isScheduled}
+                        title={isScheduled ? `Already scheduled on ${scheduledEntry.day}` : undefined}
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[90px]
+                          ${
+                            isSelected
+                              ? 'border-brand-500/60 ring-1 ring-brand-500/60 bg-brand-50'
+                              : isScheduled
+                                ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed'
+                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                      >
+                        <span
+                          className={`text-xs font-semibold ${
+                            isSelected ? 'text-brand-600' : isScheduled ? 'text-slate-400' : 'text-slate-700'
+                          }`}
+                        >
+                          {g.name}
+                        </span>
+                        {isScheduled ? (
+                          <span className="text-[9px] mt-0.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-mono">
+                            ✓ {scheduledEntry.day}
+                          </span>
+                        ) : isSelected ? (
+                          <span className="text-[9px] mt-0.5 px-1.5 py-0.5 rounded bg-brand-100 text-brand-600 font-mono">
+                            Selected
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}
