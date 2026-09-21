@@ -61,7 +61,7 @@ def _slot_label(slot: TimeSlot) -> str:
 
 def _check_conflicts(
     db: Session,
-    faculty_id: int,
+    faculty_ids: list[int],
     batch_id: int,
     day: DayOfWeek,
     time_slot_id: int,
@@ -73,7 +73,7 @@ def _check_conflicts(
 ) -> EntryCheckResponse:
     """Run conflict + adjacency + limit checks. Returns structured result."""
 
-    faculty = db.query(Faculty).filter(Faculty.id == faculty_id).first()
+    faculties = db.query(Faculty).filter(Faculty.id.in_(faculty_ids)).all()
     current_slot = db.query(TimeSlot).filter(TimeSlot.id == time_slot_id).first()
     
     subject_q = db.query(Subject).filter(Subject.id == subject_id)
@@ -83,7 +83,7 @@ def _check_conflicts(
 
     room = db.query(Room).filter(Room.id == room_id).first()
 
-    if not faculty or not current_slot or not subject or not room:
+    if not faculties or not current_slot or not subject or not room:
         return EntryCheckResponse(status="ok")
 
     # ── 0. Weekly Limit Check ──────────────────────────────────────────────────
@@ -121,7 +121,7 @@ def _check_conflicts(
             )
 
 
-    # ── 1. Hard conflict: same faculty + same slot + DIFFERENT batch ────────────
+    # ── 1. Hard conflict: same faculty + same slot (any batch) ────────────────
     q = (
         db.query(TimetableEntry)
         .options(
@@ -131,10 +131,9 @@ def _check_conflicts(
             joinedload(TimetableEntry.room),
         )
         .filter(
-            TimetableEntry.faculty_id == faculty_id,
+            TimetableEntry.faculties.any(Faculty.id.in_(faculty_ids)),
             TimetableEntry.day == day,
             TimetableEntry.time_slot_id == time_slot_id,
-            TimetableEntry.batch_id != batch_id,
         )
     )
     if exclude_entry_id:
@@ -145,7 +144,7 @@ def _check_conflicts(
         return EntryCheckResponse(
             status="conflict",
             message=(
-                f"⚠️ {faculty.name} is already assigned to "
+                f"⚠️ One or more selected faculties are already assigned to "
                 f"{conflict.subject.name} for {conflict.batch.name} at this time."
             ),
             conflicting_entry=ConflictingEntry(
@@ -212,7 +211,7 @@ def _check_conflicts(
                 joinedload(TimetableEntry.room),
             )
             .filter(
-                TimetableEntry.faculty_id == faculty_id,
+                TimetableEntry.faculties.any(Faculty.id.in_(faculty_ids)),
                 TimetableEntry.day == day,
                 TimetableEntry.time_slot_id == prev_slot.id,
                 TimetableEntry.batch_id != batch_id,
@@ -228,7 +227,7 @@ def _check_conflicts(
                 return EntryCheckResponse(
                     status="warning",
                     message=(
-                        f"⏰ Heads up: {faculty.name} is already teaching "
+                        f"⏰ Heads up: One or more selected faculties are already teaching "
                         f"{adj.subject.name} for {adj.batch.name} during "
                         f"{_slot_label(prev_slot)}. You're now assigning them "
                         f"for this batch at {_slot_label(current_slot)} — "
@@ -263,7 +262,7 @@ def _check_conflicts(
                 joinedload(TimetableEntry.room),
             )
             .filter(
-                TimetableEntry.faculty_id == faculty_id,
+                TimetableEntry.faculties.any(Faculty.id.in_(faculty_ids)),
                 TimetableEntry.day == day,
                 TimetableEntry.time_slot_id == next_slot.id,
                 TimetableEntry.batch_id != batch_id,
@@ -276,7 +275,7 @@ def _check_conflicts(
             return EntryCheckResponse(
                 status="warning",
                 message=(
-                    f"⏰ Heads up: {faculty.name} is already teaching "
+                    f"⏰ Heads up: One or more selected faculties are already teaching "
                     f"{adj2.subject.name} for {adj2.batch.name} during "
                     f"{_slot_label(next_slot)}. Assigning them at "
                     f"{_slot_label(current_slot)} will be back to back."
@@ -300,7 +299,7 @@ def _load_entry(db: Session, entry_id: int) -> TimetableEntry:
             joinedload(TimetableEntry.batch),
             joinedload(TimetableEntry.group),
             joinedload(TimetableEntry.subject),
-            joinedload(TimetableEntry.faculty),
+            joinedload(TimetableEntry.faculties),
             joinedload(TimetableEntry.time_slot),
             joinedload(TimetableEntry.room),
         )
@@ -325,7 +324,7 @@ def list_entries(
         joinedload(TimetableEntry.batch),
         joinedload(TimetableEntry.group),
         joinedload(TimetableEntry.subject),
-        joinedload(TimetableEntry.faculty),
+        joinedload(TimetableEntry.faculties),
         joinedload(TimetableEntry.time_slot),
         joinedload(TimetableEntry.room),
     )
@@ -349,7 +348,7 @@ def check_entry(
     """Pre-flight check — does NOT create anything."""
     return _check_conflicts(
         db,
-        faculty_id=payload.faculty_id,
+        faculty_ids=payload.faculty_ids,
         batch_id=payload.batch_id,
         day=payload.day,
         time_slot_id=payload.time_slot_id,
@@ -393,11 +392,13 @@ def create_entry(
     return entry_response
 
 def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> EntryCreateResponse:
-    # Validate FK existence
+    faculties = db.query(Faculty).filter(Faculty.id.in_(payload.faculty_ids)).all()
+    if len(faculties) != len(payload.faculty_ids):
+        raise HTTPException(status_code=404, detail="One or more Faculty not found")
+        
     for model, fid, label in [
         (Batch, payload.batch_id, "Batch"),
         (Subject, payload.subject_id, "Subject"),
-        (Faculty, payload.faculty_id, "Faculty"),
         (TimeSlot, payload.time_slot_id, "Time slot"),
         (Room, payload.room_id, "Room"),
     ]:
@@ -422,6 +423,9 @@ def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> Entr
         raise HTTPException(status_code=422, detail="Theory subjects cannot be assigned to a specific group")
     if subject.type == SubjectType.lab and payload.group_id is None:
         raise HTTPException(status_code=422, detail="Lab subjects must be assigned to a specific group")
+        
+    if subject.type == SubjectType.theory and len(payload.faculty_ids) > 1:
+        raise HTTPException(status_code=422, detail="Theory subjects can only have one assigned faculty")
 
     # Check unique constraint (batch + day + slot)
     existing_q = db.query(TimetableEntry).filter(
@@ -443,7 +447,7 @@ def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> Entr
 
     check = _check_conflicts(
         db,
-        faculty_id=payload.faculty_id,
+        faculty_ids=payload.faculty_ids,
         batch_id=payload.batch_id,
         day=payload.day,
         time_slot_id=payload.time_slot_id,
@@ -466,7 +470,9 @@ def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> Entr
             conflicting_entry=check.conflicting_entry,
         )
 
-    entry = TimetableEntry(**payload.model_dump())
+    payload_dump = payload.model_dump(exclude={"faculty_ids"})
+    entry = TimetableEntry(**payload_dump)
+    entry.faculties = faculties
     db.add(entry)
     db.flush() # flush so it's visible to subsequent checks in the same transaction (e.g. bulk insert)
 
@@ -550,7 +556,7 @@ def update_entry(
     update_data = payload.model_dump(exclude_unset=True, exclude={"version"})
 
     # Determine effective values for conflict check
-    eff_faculty_id = update_data.get("faculty_id", entry.faculty_id)
+    eff_faculty_ids = update_data.get("faculty_ids", [f.id for f in entry.faculties])
     eff_batch_id = update_data.get("batch_id", entry.batch_id)
     eff_subject_id = update_data.get("subject_id", entry.subject_id)
     eff_day = update_data.get("day", entry.day)
@@ -583,6 +589,8 @@ def update_entry(
         raise HTTPException(status_code=422, detail="Theory subjects cannot be assigned to a specific group")
     if eff_subject.type == SubjectType.lab and eff_group_id is None:
         raise HTTPException(status_code=422, detail="Lab subjects must be assigned to a specific group")
+    if eff_subject.type == SubjectType.theory and len(eff_faculty_ids) > 1:
+        raise HTTPException(status_code=422, detail="Theory subjects can only have one assigned faculty")
 
     # Check unique constraints
     existing_q = db.query(TimetableEntry).filter(
@@ -605,7 +613,7 @@ def update_entry(
 
     check = _check_conflicts(
         db,
-        faculty_id=eff_faculty_id,
+        faculty_ids=eff_faculty_ids,
         batch_id=eff_batch_id,
         day=eff_day,
         time_slot_id=eff_slot_id,

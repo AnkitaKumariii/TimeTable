@@ -63,7 +63,6 @@ export interface TimetableEntry {
   batch_id: number;
   group_id?: number | null;
   subject_id: number;
-  faculty_id: number;
   day: DayOfWeek;
   time_slot_id: number;
   room_id: number;
@@ -73,7 +72,7 @@ export interface TimetableEntry {
   batch: Batch;
   group?: BatchGroup | null;
   subject: Subject;
-  faculty: FacultyMember;
+  faculties: FacultyMember[];
   time_slot: TimeSlot;
   room: Room;
 }
@@ -123,5 +122,5 @@ export interface TimeSlotCreate { label: string; start_time: string; end_time: s
 export interface TimeSlotUpdate { label?: string; start_time?: string; end_time?: string; sort_order?: number; is_break?: boolean }
 export interface RoomCreate { name: string; }
 export interface RoomUpdate { name?: string; }
-export interface EntryCreate { batch_id: number; group_id?: number | null; subject_id: number; faculty_id: number; day: DayOfWeek; time_slot_id: number; room_id: number; }
-export interface EntryUpdate { batch_id?: number; group_id?: number | null; subject_id?: number; faculty_id?: number; day?: DayOfWeek; time_slot_id?: number; room_id?: number; version: number }
+export interface EntryCreate { batch_id: number; group_id?: number | null; subject_id: number; faculty_ids: number[]; day: DayOfWeek; time_slot_id: number; room_id: number; }
+export interface EntryUpdate { batch_id?: number; group_id?: number | null; subject_id?: number; faculty_ids?: number[]; day?: DayOfWeek; time_slot_id?: number; room_id?: number; version: number }

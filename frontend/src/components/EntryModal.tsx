@@ -179,7 +179,11 @@ export function EntryModal({
   });
 
   const selectedSubject = subjects.find(s => s.id === subjectId);
-  const [facultyId, setFacultyId] = useState<number | null>(existingEntry?.faculty_id ?? null);
+  const [facultyIds, setFacultyIds] = useState<(number | null)[]>(
+    existingEntry?.faculties?.map(f => f.id) ?? []
+  );
+  // Count of extra slots beyond the fixed 2 Profs + 2 TAs
+  const [extraSlots, setExtraSlots] = useState(Math.max(0, (existingEntry?.faculties?.length ?? 0) - 4));
   const [roomId, setRoomId] = useState<number | null>(existingEntry?.room_id ?? null);
   const [day] = useState<DayOfWeek>(existingEntry?.day ?? defaultDay ?? 'Monday');
   const [slotId, setSlotId] = useState<number | null>(existingEntry?.time_slot_id ?? defaultSlotId ?? null);
@@ -211,7 +215,7 @@ export function EntryModal({
   const isComplete =
     batchId != null &&
     subjectId != null &&
-    facultyId != null &&
+    facultyIds.some(id => id != null) &&
     roomId != null &&
     day != null &&
     slotId != null &&
@@ -239,7 +243,9 @@ export function EntryModal({
           batch_id: batchId!,
           group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
-          faculty_id: facultyId!,
+          faculty_ids: selectedSubject?.type === 'theory'
+            ? facultyIds.filter((id): id is number => id !== null).slice(0, 1)
+            : facultyIds.filter((id): id is number => id !== null),
           room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
@@ -262,7 +268,9 @@ export function EntryModal({
           batch_id: batchId!,
           group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
-          faculty_id: facultyId!,
+          faculty_ids: selectedSubject?.type === 'theory'
+            ? facultyIds.filter((id): id is number => id !== null).slice(0, 1)
+            : facultyIds.filter((id): id is number => id !== null),
           room_id: roomId!,
           day: day!,
           time_slot_id: slotId!,
@@ -272,26 +280,38 @@ export function EntryModal({
         let isAutoFilling = false;
         if (selectedSubject?.type === 'lab' && selectedSubject.hours_per_week > 1) {
           const currentSlot = slots.find((s) => s.id === slotId);
-          if (currentSlot) {
-            const sortedAfter = slots
-              .filter((s) => s.sort_order > currentSlot.sort_order)
-              .sort((a, b) => a.sort_order - b.sort_order);
-            
-            const nextSlots = [];
-            let lastOrder = currentSlot.sort_order;
-            
-            for (const s of sortedAfter) {
-              if (s.is_break || s.sort_order !== lastOrder + 1) break;
-              nextSlots.push(s);
-              lastOrder = s.sort_order;
-              if (nextSlots.length === selectedSubject.hours_per_week - 1) break;
-            }
-            
-            for (const slot of nextSlots) {
-              payloads.push({ ...basePayload, time_slot_id: slot.id });
-            }
-            if (nextSlots.length > 0) isAutoFilling = true;
+          if (!currentSlot) {
+            setSaveStatus('idle');
+            toast.error('Selected time slot not found. Please refresh and try again.');
+            return;
           }
+          const sortedAfter = slots
+            .filter((s) => s.sort_order > currentSlot.sort_order)
+            .sort((a, b) => a.sort_order - b.sort_order);
+          
+          const nextSlots = [];
+          let lastOrder = currentSlot.sort_order;
+          
+          for (const s of sortedAfter) {
+            if (s.is_break || s.sort_order !== lastOrder + 1) break;
+            nextSlots.push(s);
+            lastOrder = s.sort_order;
+            if (nextSlots.length === selectedSubject.hours_per_week - 1) break;
+          }
+          
+          const requiredExtra = selectedSubject.hours_per_week - 1;
+          if (nextSlots.length < requiredExtra) {
+            setSaveStatus('idle');
+            toast.error(
+              `Cannot fit ${selectedSubject.hours_per_week}-hour lab here. Only ${nextSlots.length + 1} consecutive slot(s) available before a break or end of day.`
+            );
+            return;
+          }
+          
+          for (const slot of nextSlots) {
+            payloads.push({ ...basePayload, time_slot_id: slot.id });
+          }
+          isAutoFilling = true;
         }
 
         const res = await createEntriesBulk(payloads, force);
@@ -504,25 +524,150 @@ export function EntryModal({
 
           {/* Faculty */}
           <div>
-            <label className="label">Faculty</label>
-            <Combobox
-              id="modal-faculty"
-              options={faculty.map((f) => ({
-                value: f.id,
-                label: f.name,
-                sublabel: f.role === 'teaching_assistant' ? 'TA' : 'Prof.',
-              }))}
-              value={facultyId}
-              onChange={(v) => { setFacultyId(v as number); setConflict({ kind: 'none' }); }}
-              placeholder="Select faculty…"
-              onAddNew={(q) => setQuickCreate({ type: 'faculty', initial: q })}
-              addNewLabel="Add new faculty"
-            />
+            <label className="label">
+              {selectedSubject?.type === 'lab' ? 'Faculty' : 'Faculty'}
+            </label>
+            
+            {selectedSubject?.type === 'lab' ? (
+              <div className="space-y-4">
+
+                {/* ── Professors (role-filtered) ────────────────────── */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500 flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                    Professors
+                  </p>
+                  {[0, 1].map((index) => (
+                    <Combobox
+                      key={`prof-${index}`}
+                      id={`modal-faculty-prof-${index}`}
+                      options={faculty
+                        .filter(f => f.role === 'professor')
+                        .map(f => ({ value: f.id, label: f.name, sublabel: 'Prof.' }))}
+                      value={facultyIds[index] ?? null}
+                      onChange={(v) => {
+                        const newIds = [...facultyIds];
+                        newIds[index] = v as number;
+                        setFacultyIds(newIds);
+                        setConflict({ kind: 'none' });
+                      }}
+                      placeholder={`Professor ${index + 1}…`}
+                      onAddNew={(q) => setQuickCreate({ type: 'faculty', initial: q })}
+                      addNewLabel="Add new professor"
+                    />
+                  ))}
+                </div>
+
+                {/* ── Teaching Assistants (role-filtered) ───────────── */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-500 flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    Teaching Assistants
+                  </p>
+                  {[2, 3].map((index) => (
+                    <Combobox
+                      key={`ta-${index}`}
+                      id={`modal-faculty-ta-${index - 2}`}
+                      options={faculty
+                        .filter(f => f.role === 'teaching_assistant')
+                        .map(f => ({ value: f.id, label: f.name, sublabel: 'TA' }))}
+                      value={facultyIds[index] ?? null}
+                      onChange={(v) => {
+                        const newIds = [...facultyIds];
+                        newIds[index] = v as number;
+                        setFacultyIds(newIds);
+                        setConflict({ kind: 'none' });
+                      }}
+                      placeholder={`Teaching Assistant ${index - 1}…`}
+                      onAddNew={(q) => setQuickCreate({ type: 'faculty', initial: q })}
+                      addNewLabel="Add new TA"
+                    />
+                  ))}
+                </div>
+
+                {/* ── Additional faculty (optional, any role) ────────── */}
+                {extraSlots > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                      Additional Faculty
+                    </p>
+                    {Array.from({ length: extraSlots }).map((_, i) => {
+                      const index = 4 + i;
+                      return (
+                        <Combobox
+                          key={`extra-${index}`}
+                          id={`modal-faculty-extra-${i}`}
+                          options={faculty.map(f => ({
+                            value: f.id,
+                            label: f.name,
+                            sublabel: f.role === 'teaching_assistant' ? 'TA' : 'Prof.',
+                          }))}
+                          value={facultyIds[index] ?? null}
+                          onChange={(v) => {
+                            const newIds = [...facultyIds];
+                            newIds[index] = v as number;
+                            setFacultyIds(newIds);
+                            setConflict({ kind: 'none' });
+                          }}
+                          placeholder={`Additional faculty ${i + 1}…`}
+                          onAddNew={(q) => setQuickCreate({ type: 'faculty', initial: q })}
+                          addNewLabel="Add new faculty"
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setExtraSlots(s => s + 1)}
+                  className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add more faculty
+                </button>
+              </div>
+            ) : (
+              <Combobox
+                id="modal-faculty"
+                options={faculty.map((f) => ({
+                  value: f.id,
+                  label: f.name,
+                  sublabel: f.role === 'teaching_assistant' ? 'TA' : 'Prof.',
+                }))}
+                value={facultyIds[0] ?? null}
+                onChange={(v) => { 
+                  setFacultyIds([v as number]); 
+                  setConflict({ kind: 'none' }); 
+                }}
+                placeholder="Select faculty…"
+                onAddNew={(q) => setQuickCreate({ type: 'faculty', initial: q })}
+                addNewLabel="Add new faculty"
+              />
+            )}
+
             {quickCreate?.type === 'faculty' && (
               <QuickCreate
                 type="faculty"
                 initialName={quickCreate.initial}
-                onCreated={(id) => { setFacultyId(id); setQuickCreate(null); }}
+                onCreated={(id) => {
+                  if (selectedSubject?.type === 'lab') {
+                    // Find first empty slot or add a new extra one
+                    const emptyIdx = facultyIds.findIndex(f => f == null);
+                    if (emptyIdx !== -1) {
+                      const newIds = [...facultyIds];
+                      newIds[emptyIdx] = id;
+                      setFacultyIds(newIds);
+                    } else {
+                      setFacultyIds([...facultyIds, id]);
+                      setExtraSlots(s => s + 1);
+                    }
+                  } else {
+                    setFacultyIds([id]);
+                  }
+                  setQuickCreate(null);
+                }}
                 onCancel={() => setQuickCreate(null)}
               />
             )}

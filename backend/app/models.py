@@ -24,6 +24,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+class TimetableEntryFaculty(Base):
+    """Association table mapping entries to multiple faculties."""
+    __tablename__ = "timetable_entry_faculty"
+    
+    entry_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("timetable_entries.id", ondelete="CASCADE"), primary_key=True
+    )
+    faculty_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("faculty.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 # ── Enums ─────────────────────────────────────────────────────────────────────
 
 class UserRole(str, enum.Enum):
@@ -162,7 +174,7 @@ class Faculty(Base):
     user: Mapped["User | None"] = relationship("User", back_populates="faculty_profile")
 
     entries: Mapped[list["TimetableEntry"]] = relationship(
-        "TimetableEntry", back_populates="faculty"
+        "TimetableEntry", secondary="timetable_entry_faculty", back_populates="faculties"
     )
 
 
@@ -228,9 +240,6 @@ class TimetableEntry(Base):
     subject_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("subjects.id"), nullable=False
     )
-    faculty_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("faculty.id"), nullable=False
-    )
     day: Mapped[DayOfWeek] = mapped_column(
         Enum(DayOfWeek, name="day_of_week"), nullable=False
     )
@@ -251,7 +260,7 @@ class TimetableEntry(Base):
     batch: Mapped["Batch"] = relationship("Batch", back_populates="entries", overlaps="group,entries")
     group: Mapped["BatchGroup | None"] = relationship("BatchGroup", back_populates="entries", overlaps="batch,entries")
     subject: Mapped["Subject"] = relationship("Subject", back_populates="entries")
-    faculty: Mapped["Faculty"] = relationship("Faculty", back_populates="entries")
+    faculties: Mapped[list["Faculty"]] = relationship("Faculty", secondary="timetable_entry_faculty", back_populates="entries")
     time_slot: Mapped["TimeSlot"] = relationship("TimeSlot", back_populates="entries")
     room: Mapped["Room"] = relationship("Room", back_populates="entries")
 

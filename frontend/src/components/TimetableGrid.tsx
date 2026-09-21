@@ -480,18 +480,22 @@ function EntryCard({ entry, onClick }: { entry: TimetableEntry; onClick: () => v
       )}
 
       {/* Faculty */}
-      <span className="text-[10px] leading-tight truncate mt-0.5 flex items-center gap-1">
-        <span
-          className={`font-semibold px-1 py-0.5 rounded text-[9px] leading-none
-            ${entry.faculty.role === 'teaching_assistant'
-              ? 'bg-teal-100 text-teal-700'
-              : 'bg-brand-100 text-brand-700'
-            }`}
-        >
-          {entry.faculty.role === 'teaching_assistant' ? 'TA' : 'Prof.'}
-        </span>
-        <span className="text-slate-700 truncate flex-1">{entry.faculty.name}</span>
-      </span>
+      <div className="flex flex-col gap-1 w-full mt-0.5">
+        {entry.faculties.map((faculty) => (
+          <div key={faculty.id} className="flex items-center gap-1.5 text-xs">
+            <div
+              className={`flex-shrink-0 w-7 h-4 flex items-center justify-center rounded-sm text-[9px] font-bold tracking-wider 
+              ${faculty.role === 'teaching_assistant'
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-indigo-100 text-indigo-700'
+              }`}
+            >
+              {faculty.role === 'teaching_assistant' ? 'TA' : 'Prof.'}
+            </div>
+            <span className="text-slate-700 truncate flex-1">{faculty.name}</span>
+          </div>
+        ))}
+      </div>
 
       {/* Room */}
       <span className="text-[10px] text-slate-500 leading-tight truncate flex items-center gap-1">

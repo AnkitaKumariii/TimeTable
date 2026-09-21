@@ -62,7 +62,10 @@ class BatchGroupCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def strip_name(cls, v: str) -> str:
-        return v.strip()
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
 
 
 class BatchGroupUpdate(BaseModel):
@@ -71,7 +74,12 @@ class BatchGroupUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def strip_name(cls, v: Optional[str]) -> Optional[str]:
-        return v.strip() if v else v
+        if v is not None:
+            stripped = v.strip()
+            if not stripped:
+                raise ValueError("name must not be blank")
+            return stripped
+        return v
 
 
 class BatchGroupOut(_ORM):
@@ -178,21 +186,38 @@ class EntryCreate(BaseModel):
     batch_id: int
     group_id: Optional[int] = None
     subject_id: int
-    faculty_id: int
+    faculty_ids: list[int] = Field(..., min_length=1)
     day: DayOfWeek
     time_slot_id: int
     room_id: int
+
+    @field_validator("faculty_ids")
+    @classmethod
+    def no_duplicate_faculty(cls, v: list[int]) -> list[int]:
+        if len(v) != len(set(v)):
+            raise ValueError("faculty_ids must not contain duplicates")
+        return v
 
 
 class EntryUpdate(BaseModel):
     batch_id: Optional[int] = None
     group_id: Optional[int] = None
     subject_id: Optional[int] = None
-    faculty_id: Optional[int] = None
+    faculty_ids: Optional[list[int]] = None
     day: Optional[DayOfWeek] = None
     time_slot_id: Optional[int] = None
     room_id: Optional[int] = None
     version: int  # required – optimistic concurrency
+
+    @field_validator("faculty_ids")
+    @classmethod
+    def no_duplicate_faculty(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is not None:
+            if len(v) == 0:
+                raise ValueError("faculty_ids must contain at least one ID")
+            if len(v) != len(set(v)):
+                raise ValueError("faculty_ids must not contain duplicates")
+        return v
 
 
 class ConflictingEntry(BaseModel):
@@ -215,7 +240,6 @@ class EntryOut(_ORM):
     batch_id: int
     group_id: Optional[int] = None
     subject_id: int
-    faculty_id: int
     day: DayOfWeek
     time_slot_id: int
     room_id: int
@@ -226,7 +250,7 @@ class EntryOut(_ORM):
     batch: BatchOut
     group: Optional[BatchGroupOut] = None
     subject: SubjectOut
-    faculty: FacultyOut
+    faculties: list[FacultyOut]
     time_slot: TimeSlotOut
     room: RoomOut
 

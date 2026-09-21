@@ -70,6 +70,5 @@ def delete_faculty(
     faculty = db.query(Faculty).filter(Faculty.id == faculty_id).first()
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty member not found")
-    db.query(TimetableEntry).filter(TimetableEntry.faculty_id == faculty_id).delete()
     db.delete(faculty)
     db.commit()

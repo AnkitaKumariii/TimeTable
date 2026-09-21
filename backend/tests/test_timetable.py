@@ -29,7 +29,7 @@ def test_add_timetable_entry(auth_client):
     response = auth_client.post("/api/timetable/entries", json={
         "batch_id": batch_id,
         "subject_id": sub_id,
-        "faculty_id": fac_id,
+        "faculty_ids": [fac_id],
         "day": "Monday",
         "time_slot_id": slot_id,
         "room_id": room_id
@@ -69,7 +69,7 @@ def test_list_timetable_entries(auth_client):
     create_res = auth_client.post("/api/timetable/entries", json={
         "batch_id": batch_id,
         "subject_id": sub_id,
-        "faculty_id": fac_id,
+        "faculty_ids": [fac_id],
         "day": "Tuesday",
         "time_slot_id": slot_id,
         "room_id": room_id
