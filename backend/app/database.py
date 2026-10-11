@@ -77,6 +77,17 @@ def _build_engine():
 
 engine = _build_engine()
 
+
+@event.listens_for(engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):  # noqa: ARG001
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        if not settings.is_turso:
+            cursor.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

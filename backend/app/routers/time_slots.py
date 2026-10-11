@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import TimeSlot, TimetableEntry, User
+from app.models import TimeSlot, User
 from app.schemas import TimeSlotCreate, TimeSlotOut, TimeSlotUpdate
 
 router = APIRouter(prefix="/time-slots", tags=["time-slots"])
@@ -57,6 +57,11 @@ def update_time_slot(
     if not slot:
         raise HTTPException(status_code=404, detail="Time slot not found")
     data = payload.model_dump(exclude_unset=True)
+    effective_start = data.get("start_time", slot.start_time)
+    effective_end = data.get("end_time", slot.end_time)
+    if effective_end <= effective_start:
+        raise HTTPException(status_code=422, detail="end_time must be after start_time")
+
     # If sort_order changes, ensure it's not taken by another slot
     if "sort_order" in data:
         conflict = (
@@ -85,6 +90,7 @@ def delete_time_slot(
     slot = db.query(TimeSlot).filter(TimeSlot.id == slot_id).first()
     if not slot:
         raise HTTPException(status_code=404, detail="Time slot not found")
-    db.query(TimetableEntry).filter(TimetableEntry.time_slot_id == slot_id).delete()
+    for entry in list(slot.entries):
+        db.delete(entry)
     db.delete(slot)
     db.commit()

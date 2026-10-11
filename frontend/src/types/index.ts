@@ -94,7 +94,7 @@ export interface EntryCheckResponse {
 
 export interface EntryCreateResponse {
   status: 'ok' | 'warning';
-  entry: TimetableEntry;
+  entry: TimetableEntry | null;
   message: string;
   conflicting_entry?: ConflictingEntry | null;
 }

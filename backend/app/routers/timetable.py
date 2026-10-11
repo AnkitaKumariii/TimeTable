@@ -5,6 +5,7 @@ import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.deps import get_current_user, get_db
@@ -311,6 +312,13 @@ def _load_entry(db: Session, entry_id: int) -> TimetableEntry:
     return entry
 
 
+def _validate_faculties(db: Session, faculty_ids: list[int]) -> list[Faculty]:
+    faculties = db.query(Faculty).filter(Faculty.id.in_(faculty_ids)).all()
+    if len(faculties) != len(faculty_ids):
+        raise HTTPException(status_code=404, detail="One or more Faculty not found")
+    return faculties
+
+
 # ── Entries endpoints ──────────────────────────────────────────────────────────
 
 @router.get("/entries", response_model=List[EntryOut])
@@ -392,9 +400,7 @@ def create_entry(
     return entry_response
 
 def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> EntryCreateResponse:
-    faculties = db.query(Faculty).filter(Faculty.id.in_(payload.faculty_ids)).all()
-    if len(faculties) != len(payload.faculty_ids):
-        raise HTTPException(status_code=404, detail="One or more Faculty not found")
+    faculties = _validate_faculties(db, payload.faculty_ids)
         
     for model, fid, label in [
         (Batch, payload.batch_id, "Batch"),
@@ -474,7 +480,11 @@ def _create_single_entry(db: Session, payload: EntryCreate, force: bool) -> Entr
     entry = TimetableEntry(**payload_dump)
     entry.faculties = faculties
     db.add(entry)
-    db.flush() # flush so it's visible to subsequent checks in the same transaction (e.g. bulk insert)
+    try:
+        db.flush() # flush so it's visible to subsequent checks in the same transaction (e.g. bulk insert)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Timetable entry conflicts with an existing entry")
 
     return EntryCreateResponse(
         status=check.status if check.status == "warning" else "ok",
@@ -562,8 +572,13 @@ def update_entry(
     eff_day = update_data.get("day", entry.day)
     eff_slot_id = update_data.get("time_slot_id", entry.time_slot_id)
     eff_room_id = update_data.get("room_id", entry.room_id)
+    if not db.query(Batch).filter(Batch.id == eff_batch_id).first():
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not db.query(TimeSlot).filter(TimeSlot.id == eff_slot_id).first():
+        raise HTTPException(status_code=404, detail="Time slot not found")
     if not db.query(Room).filter(Room.id == eff_room_id).first():
         raise HTTPException(status_code=404, detail="Room not found")
+    updated_faculties = _validate_faculties(db, eff_faculty_ids)
 
     eff_group_id = update_data.get("group_id", entry.group_id)
     if "group_id" in update_data and update_data["group_id"] is None:
@@ -639,10 +654,16 @@ def update_entry(
             },
         )
 
+    update_data.pop("faculty_ids", None)
     for field, value in update_data.items():
         setattr(entry, field, value)
+    entry.faculties = updated_faculties
     entry.version += 1
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Timetable entry conflicts with an existing entry")
 
     full = _load_entry(db, entry.id)
     return EntryCreateResponse(

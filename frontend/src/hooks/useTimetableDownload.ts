@@ -141,6 +141,12 @@ async function buildPdf(
   const sortedSlots = [...slots].sort((a, b) => a.sort_order - b.sort_order);
   const regularSlots = sortedSlots.filter((s) => !s.is_break);
 
+  if (regularSlots.length === 0) {
+    pdf.setFont(fontName, 'normal');
+    pdf.text('No teaching periods configured.', 20, 20);
+    return pdf.output('blob') as unknown as Blob;
+  }
+
   // Build lookup
   const lookup = new Map<string, TimetableEntry[]>();
   for (const e of entries) {
@@ -180,6 +186,36 @@ async function buildPdf(
 
   function colW(slot: TimeSlot): number {
     return slot.is_break ? BREAK_COL_W : regularColW;
+  }
+
+  function fitSingleLine(text: string, maxWidth: number): string {
+    if (maxWidth <= 0) return '';
+    if (pdf.getTextWidth(text) <= maxWidth) return text;
+
+    const ellipsis = '...';
+    if (pdf.getTextWidth(ellipsis) > maxWidth) return '';
+
+    let low = 0;
+    let high = text.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (pdf.getTextWidth(text.slice(0, mid) + ellipsis) <= maxWidth) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return text.slice(0, low).trimEnd() + ellipsis;
+  }
+
+  function textLine(
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    options?: { align?: 'left' | 'center' | 'right' },
+  ) {
+    pdf.text(fitSingleLine(text, maxWidth), x, y, options);
   }
 
   // ── Pre-compute row heights and paginate oversized rows ─────────────────
@@ -260,7 +296,7 @@ async function buildPdf(
     pdf.setFont(fontName, 'bold');
     pdf.setFontSize(13);
     pdf.setTextColor(30, 41, 59);
-    pdf.text(`Weekly Timetable — ${label}`, MARGIN, curY + 5);
+    textLine(`Weekly Timetable - ${label}`, MARGIN, curY + 5, PAGE_W - 2 * MARGIN);
     curY += 10;
     
     pageStartY = curY; // Start of table borders
@@ -273,7 +309,7 @@ async function buildPdf(
     pdf.setFont(fontName, 'bold');
     pdf.setFontSize(6.5);
     pdf.setTextColor(100, 116, 139);
-    pdf.text('DAY / PERIOD', MARGIN + CELL_PAD, curY + HEADER_ROW_H / 2 + 2);
+    textLine('DAY / PERIOD', MARGIN + CELL_PAD, curY + HEADER_ROW_H / 2 + 2, DAY_COL_W - CELL_PAD * 2);
 
     // Slot headers
     for (let i = 0; i < sortedSlots.length; i++) {
@@ -292,11 +328,11 @@ async function buildPdf(
       pdf.setTextColor(71, 85, 105);
       const labelText = slot.label.toUpperCase();
       const timeText = fmtSlotRange(slot.start_time, slot.end_time);
-      pdf.text(labelText, x + w / 2, curY + 4.5, { align: 'center', maxWidth: w - 2 });
+      textLine(labelText, x + w / 2, curY + 4.5, w - 2, { align: 'center' });
       pdf.setFont(fontName, 'normal');
       pdf.setFontSize(5.5);
       pdf.setTextColor(100, 116, 139);
-      pdf.text(timeText, x + w / 2, curY + 9.5, { align: 'center', maxWidth: w - 2 });
+      textLine(timeText, x + w / 2, curY + 9.5, w - 2, { align: 'center' });
     }
 
     // Header bottom border
@@ -330,7 +366,7 @@ async function buildPdf(
     pdf.setFont(fontName, 'bold');
     pdf.setFontSize(7.5);
     pdf.setTextColor(51, 65, 85);
-    pdf.text(row.dayLabel, MARGIN + CELL_PAD, curY + rowH / 2 + 2.5);
+    textLine(row.dayLabel, MARGIN + CELL_PAD, curY + rowH / 2 + 2.5, DAY_COL_W - CELL_PAD * 2);
 
     // Slot cells
     for (let i = 0; i < sortedSlots.length; i++) {
@@ -366,13 +402,13 @@ async function buildPdf(
         pdf.setFont(fontName, 'bold');
         pdf.setFontSize(6);
         pdf.setTextColor(textR, textG, textB);
-        pdf.text(entry.subject.short_code, tx, lineY(0), { maxWidth: w - 4 });
+        textLine(entry.subject.short_code, tx, lineY(0), w - 4);
 
         // Subject name
         pdf.setFont(fontName, 'normal');
         pdf.setFontSize(5.5);
         pdf.setTextColor(71, 85, 105);
-        pdf.text(entry.subject.name, tx, lineY(1), { maxWidth: w - 4 });
+        textLine(entry.subject.name, tx, lineY(1), w - 4);
 
         // Batch pill (draw as small rect)
         const [batchBgR, batchBgG, batchBgB] = hexAlphaMix(entry.batch.color, 0.25);
@@ -380,26 +416,26 @@ async function buildPdf(
         const batchLabel = entry.batch.name + (entry.group ? ` (${entry.group.name})` : '');
         pdf.setFillColor(batchBgR, batchBgG, batchBgB);
         pdf.setDrawColor(batchBgR, batchBgG, batchBgB);
-        pdf.roundedRect(tx, lineY(2) - 2.5, Math.min(batchLabel.length * 1.7 + 2, w - 5), 3.5, 0.8, 0.8, 'F');
+        const batchText = fitSingleLine(batchLabel, w - 7);
+        pdf.roundedRect(tx, lineY(2) - 2.5, Math.min(pdf.getTextWidth(batchText) + 2, w - 5), 3.5, 0.8, 0.8, 'F');
         pdf.setFont(fontName, 'bold');
         pdf.setFontSize(5);
         pdf.setTextColor(batchTR, batchTG, batchTB);
-        pdf.text(batchLabel, tx + 1, lineY(2), { maxWidth: w - 6 });
+        pdf.text(batchText, tx + 1, lineY(2));
 
         // Faculty
-        // Just show the primary role if there are multiple
-        const primaryFaculty = entry.faculties[0];
-        const roleLabel = primaryFaculty?.role === 'teaching_assistant' ? 'TA' : 'Prof.';
-        const facultyNames = entry.faculties.map(f => f.name).join(', ');
+        const facultyLabel = entry.faculties
+          .map(f => `${f.role === 'teaching_assistant' ? 'TA' : 'Prof.'} ${f.name}`)
+          .join(', ');
         
         pdf.setFont(fontName, 'normal');
         pdf.setFontSize(5.5);
         pdf.setTextColor(71, 85, 105);
-        pdf.text(`${roleLabel} ${facultyNames}`, tx, lineY(3), { maxWidth: w - 4 });
+        textLine(facultyLabel, tx, lineY(3), w - 4);
 
         // Room
         pdf.setTextColor(100, 116, 139);
-        pdf.text(entry.room?.name ?? 'Unassigned', tx, lineY(4), { maxWidth: w - 4 });
+        textLine(entry.room?.name ?? 'Unassigned', tx, lineY(4), w - 4);
 
         entryY += oneEntryH + ENTRY_GAP;
       }

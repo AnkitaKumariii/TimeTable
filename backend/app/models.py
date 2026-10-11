@@ -7,6 +7,7 @@ from datetime import datetime, time
 from sqlalchemy import (
     Boolean,
     DateTime,
+    DDL,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -217,6 +219,7 @@ class TimetableEntry(Base):
         UniqueConstraint(
             "batch_id", "day", "time_slot_id", "group_id", name="uq_batch_day_slot_group"
         ),
+        UniqueConstraint("room_id", "day", "time_slot_id", name="uq_room_day_slot"),
         # Partial unique index for theory entries (group_id is NULL)
         Index(
             "uq_theory_entry",
@@ -272,3 +275,58 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)  # JSON-serialised
+
+
+event.listen(
+    TimetableEntryFaculty.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER IF NOT EXISTS prevent_faculty_double_booking_insert
+        BEFORE INSERT ON timetable_entry_faculty
+        FOR EACH ROW
+        WHEN EXISTS (
+            SELECT 1
+            FROM timetable_entry_faculty existing_faculty
+            JOIN timetable_entries existing_entry
+                ON existing_entry.id = existing_faculty.entry_id
+            JOIN timetable_entries new_entry
+                ON new_entry.id = NEW.entry_id
+            WHERE existing_faculty.faculty_id = NEW.faculty_id
+              AND existing_entry.day = new_entry.day
+              AND existing_entry.time_slot_id = new_entry.time_slot_id
+              AND existing_entry.id != new_entry.id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'faculty double-booked for this slot');
+        END
+        """
+    ).execute_if(dialect="sqlite"),
+)
+
+event.listen(
+    TimetableEntry.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER IF NOT EXISTS prevent_faculty_double_booking_entry_update
+        BEFORE UPDATE OF day, time_slot_id ON timetable_entries
+        FOR EACH ROW
+        WHEN EXISTS (
+            SELECT 1
+            FROM timetable_entry_faculty current_faculty
+            JOIN timetable_entry_faculty other_faculty
+                ON other_faculty.faculty_id = current_faculty.faculty_id
+            JOIN timetable_entries other_entry
+                ON other_entry.id = other_faculty.entry_id
+            WHERE current_faculty.entry_id = OLD.id
+              AND other_entry.id != OLD.id
+              AND other_entry.day = NEW.day
+              AND other_entry.time_slot_id = NEW.time_slot_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'faculty double-booked for this slot');
+        END
+        """
+    ).execute_if(dialect="sqlite"),
+)

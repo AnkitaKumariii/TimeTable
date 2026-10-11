@@ -2,9 +2,17 @@
 from __future__ import annotations
 
 from datetime import datetime, time
-from typing import Any, Literal, Optional
+from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.models import DayOfWeek, FacultyRole, UserRole, SubjectType
 
@@ -15,11 +23,21 @@ class _ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class _StrictInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+NonBlank100 = Annotated[str, StringConstraints(min_length=1, max_length=100)]
+NonBlank200 = Annotated[str, StringConstraints(min_length=1, max_length=200)]
+ShortCode = Annotated[str, StringConstraints(min_length=1, max_length=20)]
+HexColor = Annotated[str, StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$")]
+
+
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
+class LoginRequest(_StrictInput):
+    username: NonBlank100
+    password: Annotated[str, StringConstraints(min_length=1, strip_whitespace=False)]
 
 
 class Token(BaseModel):
@@ -37,15 +55,15 @@ class UserOut(BaseModel):
 
 # ── Batch ──────────────────────────────────────────────────────────────────────
 
-class BatchCreate(BaseModel):
-    name: str
-    color: str = "#6366f1"
+class BatchCreate(_StrictInput):
+    name: NonBlank100
+    color: HexColor = "#6366f1"
     is_active: bool = True
 
 
-class BatchUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
+class BatchUpdate(_StrictInput):
+    name: Optional[NonBlank100] = None
+    color: Optional[HexColor] = None
     is_active: Optional[bool] = None
 
 
@@ -56,8 +74,8 @@ class BatchOut(_ORM):
     is_active: bool
 
 
-class BatchGroupCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+class BatchGroupCreate(_StrictInput):
+    name: NonBlank100
 
     @field_validator("name")
     @classmethod
@@ -68,8 +86,8 @@ class BatchGroupCreate(BaseModel):
         return stripped
 
 
-class BatchGroupUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
+class BatchGroupUpdate(_StrictInput):
+    name: Optional[NonBlank100] = None
 
     @field_validator("name")
     @classmethod
@@ -90,20 +108,20 @@ class BatchGroupOut(_ORM):
 
 # ── Subject ────────────────────────────────────────────────────────────────────
 
-class SubjectCreate(BaseModel):
-    batch_id: int
-    name: str
-    short_code: str
-    color: str = "#0ea5e9"
-    hours_per_week: int = 4
+class SubjectCreate(_StrictInput):
+    batch_id: PositiveInt
+    name: NonBlank200
+    short_code: ShortCode
+    color: HexColor = "#0ea5e9"
+    hours_per_week: int = Field(default=4, ge=1, le=12)
     type: SubjectType = SubjectType.theory
 
 
-class SubjectUpdate(BaseModel):
-    name: Optional[str] = None
-    short_code: Optional[str] = None
-    color: Optional[str] = None
-    hours_per_week: Optional[int] = None
+class SubjectUpdate(_StrictInput):
+    name: Optional[NonBlank200] = None
+    short_code: Optional[ShortCode] = None
+    color: Optional[HexColor] = None
+    hours_per_week: Optional[int] = Field(default=None, ge=1, le=12)
     type: Optional[SubjectType] = None
 
 
@@ -119,15 +137,15 @@ class SubjectOut(_ORM):
 
 # ── Faculty ────────────────────────────────────────────────────────────────────
 
-class FacultyCreate(BaseModel):
-    name: str
-    email: Optional[str] = None
+class FacultyCreate(_StrictInput):
+    name: NonBlank200
+    email: Optional[Annotated[str, StringConstraints(min_length=3, max_length=255)]] = None
     role: FacultyRole = FacultyRole.professor
 
 
-class FacultyUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
+class FacultyUpdate(_StrictInput):
+    name: Optional[NonBlank200] = None
+    email: Optional[Annotated[str, StringConstraints(min_length=3, max_length=255)]] = None
     role: Optional[FacultyRole] = None
 
 
@@ -140,20 +158,32 @@ class FacultyOut(_ORM):
 
 # ── TimeSlot ───────────────────────────────────────────────────────────────────
 
-class TimeSlotCreate(BaseModel):
-    label: str
+class TimeSlotCreate(_StrictInput):
+    label: NonBlank100
     start_time: time
     end_time: time
-    sort_order: int
+    sort_order: int = Field(..., ge=0)
     is_break: bool = False
 
+    @model_validator(mode="after")
+    def validate_time_range(self) -> "TimeSlotCreate":
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
 
-class TimeSlotUpdate(BaseModel):
-    label: Optional[str] = None
+
+class TimeSlotUpdate(_StrictInput):
+    label: Optional[NonBlank100] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    sort_order: Optional[int] = None
+    sort_order: Optional[int] = Field(default=None, ge=0)
     is_break: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validate_time_range(self) -> "TimeSlotUpdate":
+        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
 
 
 class TimeSlotOut(_ORM):
@@ -167,12 +197,12 @@ class TimeSlotOut(_ORM):
 
 # ── Room ───────────────────────────────────────────────────────────────────────
 
-class RoomCreate(BaseModel):
-    name: str
+class RoomCreate(_StrictInput):
+    name: NonBlank100
 
 
-class RoomUpdate(BaseModel):
-    name: Optional[str] = None
+class RoomUpdate(_StrictInput):
+    name: Optional[NonBlank100] = None
 
 
 class RoomOut(_ORM):
@@ -182,32 +212,34 @@ class RoomOut(_ORM):
 
 # ── TimetableEntry ─────────────────────────────────────────────────────────────
 
-class EntryCreate(BaseModel):
-    batch_id: int
-    group_id: Optional[int] = None
-    subject_id: int
+class EntryCreate(_StrictInput):
+    batch_id: PositiveInt
+    group_id: Optional[PositiveInt] = None
+    subject_id: PositiveInt
     faculty_ids: list[int] = Field(..., min_length=1)
     day: DayOfWeek
-    time_slot_id: int
-    room_id: int
+    time_slot_id: PositiveInt
+    room_id: PositiveInt
 
     @field_validator("faculty_ids")
     @classmethod
     def no_duplicate_faculty(cls, v: list[int]) -> list[int]:
+        if any(fid <= 0 for fid in v):
+            raise ValueError("faculty_ids must contain positive IDs")
         if len(v) != len(set(v)):
             raise ValueError("faculty_ids must not contain duplicates")
         return v
 
 
-class EntryUpdate(BaseModel):
-    batch_id: Optional[int] = None
-    group_id: Optional[int] = None
-    subject_id: Optional[int] = None
+class EntryUpdate(_StrictInput):
+    batch_id: Optional[PositiveInt] = None
+    group_id: Optional[PositiveInt] = None
+    subject_id: Optional[PositiveInt] = None
     faculty_ids: Optional[list[int]] = None
     day: Optional[DayOfWeek] = None
-    time_slot_id: Optional[int] = None
-    room_id: Optional[int] = None
-    version: int  # required – optimistic concurrency
+    time_slot_id: Optional[PositiveInt] = None
+    room_id: Optional[PositiveInt] = None
+    version: int = Field(..., ge=1)  # required – optimistic concurrency
 
     @field_validator("faculty_ids")
     @classmethod
@@ -215,6 +247,8 @@ class EntryUpdate(BaseModel):
         if v is not None:
             if len(v) == 0:
                 raise ValueError("faculty_ids must contain at least one ID")
+            if any(fid <= 0 for fid in v):
+                raise ValueError("faculty_ids must contain positive IDs")
             if len(v) != len(set(v)):
                 raise ValueError("faculty_ids must not contain duplicates")
         return v
@@ -258,15 +292,22 @@ class EntryOut(_ORM):
 class EntryCreateResponse(BaseModel):
     """Returned from POST /timetable/entries – may carry a warning even on success."""
     status: Literal["ok", "warning"]
-    entry: EntryOut
+    entry: Optional[EntryOut] = None
     message: str = ""
     conflicting_entry: Optional[ConflictingEntry] = None
 
 
 # ── Settings ───────────────────────────────────────────────────────────────────
 
-class ActiveDaysUpdate(BaseModel):
+class ActiveDaysUpdate(_StrictInput):
     active_days: list[DayOfWeek]
+
+    @field_validator("active_days")
+    @classmethod
+    def no_duplicate_days(cls, v: list[DayOfWeek]) -> list[DayOfWeek]:
+        if len(v) != len(set(v)):
+            raise ValueError("active_days must not contain duplicates")
+        return v
 
 
 class ActiveDaysOut(BaseModel):

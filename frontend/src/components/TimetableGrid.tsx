@@ -13,6 +13,7 @@ interface CellTarget {
   slotId: number;
   batchId?: number;
   groupId?: number;
+  initialType?: 'theory' | 'lab';
 }
 
 interface TypePickerState {
@@ -323,13 +324,13 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(
               const p = typePicker;
               setTypePicker(null);
               // Theory → no group pre-selected, covers all groups automatically
-              setModal({ cell: { day: p.day, slotId: p.slot.id, batchId: p.batchId } });
+              setModal({ cell: { day: p.day, slotId: p.slot.id, batchId: p.batchId, initialType: 'theory' } });
             }}
             onLab={() => {
               const p = typePicker;
               setTypePicker(null);
               // Lab → pre-select the group whose row was clicked
-              setModal({ cell: { day: p.day, slotId: p.slot.id, batchId: p.batchId, groupId: p.groupId } });
+              setModal({ cell: { day: p.day, slotId: p.slot.id, batchId: p.batchId, groupId: p.groupId, initialType: 'lab' } });
             }}
             onClose={() => setTypePicker(null)}
           />
@@ -343,6 +344,7 @@ export const TimetableGrid = forwardRef<HTMLDivElement, TimetableGridProps>(
             defaultSlotId={modal.cell?.slotId}
             defaultBatchId={modal.cell?.batchId}
             defaultGroupId={modal.cell?.groupId}
+            defaultType={modal.cell?.initialType}
             onClose={() => setModal(null)}
             onSaved={() => setModal(null)}
           />

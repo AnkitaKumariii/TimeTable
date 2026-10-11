@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import get_current_user, get_db
-from app.models import Batch, BatchGroup, TimetableEntry, User
+from app.models import Batch, BatchGroup, User
 from app.schemas import (
     BatchCreate,
     BatchGroupCreate,
@@ -78,7 +78,6 @@ def delete_batch(
     batch = db.query(Batch).filter(Batch.id == batch_id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    db.query(TimetableEntry).filter(TimetableEntry.batch_id == batch_id).delete()
     db.delete(batch)
     db.commit()
 
@@ -101,6 +100,9 @@ def create_batch_group(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    if not db.query(Batch).filter(Batch.id == batch_id).first():
+        raise HTTPException(status_code=404, detail="Batch not found")
+        
     if db.query(BatchGroup).filter(BatchGroup.batch_id == batch_id, BatchGroup.name == payload.name).first():
         raise HTTPException(status_code=409, detail="Group name already exists in this batch")
     group = BatchGroup(batch_id=batch_id, **payload.model_dump())
@@ -108,9 +110,12 @@ def create_batch_group(
     try:
         db.commit()
         db.refresh(group)
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Group name already exists in this batch")
+        err_msg = str(e).lower()
+        if "unique constraint failed" in err_msg or "unique" in err_msg:
+            raise HTTPException(status_code=409, detail="Group name already exists in this batch")
+        raise
     return group
 
 
@@ -147,6 +152,5 @@ def delete_batch_group(
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
-    db.query(TimetableEntry).filter(TimetableEntry.group_id == group_id).delete()
     db.delete(group)
     db.commit()

@@ -19,13 +19,14 @@ import { HardConflictAlert, SoftWarningAlert } from './ConflictNotification';
 // Inline quick-create mini-form
 interface QuickCreateProps {
   type: 'batch' | 'subject' | 'faculty' | 'room';
-  initialName: string;
+  initialName?: string;
   batchId?: number;
+  subjectType?: 'theory' | 'lab';
   onCreated: (id: number) => void;
   onCancel: () => void;
 }
 
-function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickCreateProps) {
+export function QuickCreate({ type, initialName = '', batchId, subjectType, onCreated, onCancel }: QuickCreateProps) {
   const [name, setName] = useState(initialName);
   const [shortCode, setShortCode] = useState('');
   const [color, setColor] = useState('#6366f1');
@@ -47,7 +48,7 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
           toast.error('Hours per week must be a positive integer.');
           return;
         }
-        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: hpw, type: 'theory' });
+        created = await createSubject({ batch_id: batchId, name, short_code: shortCode || name.slice(0, 6).toUpperCase(), color, hours_per_week: hpw, type: subjectType || 'theory' });
         qc.invalidateQueries({ queryKey: ['subjects'] });
       } else if (type === 'room') {
         created = await createRoom({ name });
@@ -98,6 +99,19 @@ function QuickCreate({ type, initialName, batchId, onCreated, onCancel }: QuickC
                 onChange={(e) => setHoursPerWeek(e.target.value)}
               />
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Type</span>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                  (subjectType ?? 'theory') === 'lab'
+                    ? 'bg-violet-100 text-violet-700'
+                    : 'bg-sky-100 text-sky-700'
+                }`}
+              >
+                {(subjectType ?? 'theory') === 'lab' ? '🔬 Lab' : '📖 Theory'}
+              </span>
+              <span className="text-xs text-slate-400">(inherited from slot)</span>
+            </div>
           </div>
         )}
         {type !== 'faculty' && type !== 'room' && (
@@ -140,6 +154,7 @@ interface EntryModalProps {
   defaultBatchId?: number;
   /** Pre-select a lab group when opening from a group skeleton */
   defaultGroupId?: number;
+  defaultType?: 'theory' | 'lab';
   onClose: () => void;
   onSaved: () => void;
 }
@@ -156,6 +171,7 @@ export function EntryModal({
   defaultSlotId,
   defaultBatchId,
   defaultGroupId,
+  defaultType,
   onClose,
   onSaved,
 }: EntryModalProps) {
@@ -223,7 +239,10 @@ export function EntryModal({
     (selectedSubject.type !== 'lab' || (groupId != null && !isGroupConflicted));
   const isEditing = !!existingEntry;
 
-  const filteredSubjects = batchId ? subjects.filter((s) => s.batch_id === batchId) : [];
+  const lockedType = existingEntry?.subject?.type ?? defaultType;
+  const filteredSubjects = batchId 
+    ? subjects.filter((s) => s.batch_id === batchId && (!lockedType || s.type === lockedType)) 
+    : [];
 
   function handleBatchChange(newBatchId: string | number) {
     const id = newBatchId as number;
@@ -457,6 +476,7 @@ export function EntryModal({
                   type="subject"
                   initialName={quickCreate.initial}
                   batchId={batchId}
+                  subjectType={lockedType}
                   onCreated={(id) => { setSubjectId(id); setQuickCreate(null); }}
                   onCancel={() => setQuickCreate(null)}
                 />
