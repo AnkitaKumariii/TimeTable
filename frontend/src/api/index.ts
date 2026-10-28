@@ -117,8 +117,10 @@ export const updateEntry = (id: number, data: EntryUpdate, force = false) =>
     .put<EntryCreateResponse>(`/timetable/entries/${id}?force=${force}`, data)
     .then((r) => r.data);
 
-export const deleteEntry = (id: number) =>
-  apiClient.delete(`/timetable/entries/${id}`);
+export const deleteEntry = (id: number, deleteConsecutive = true) =>
+  apiClient.delete(`/timetable/entries/${id}`, {
+    params: { delete_consecutive: deleteConsecutive },
+  });
 
 // ── Active Days ───────────────────────────────────────────────────────────────
 export const getActiveDays = () =>

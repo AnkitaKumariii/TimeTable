@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Trash2, Save, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -15,6 +15,7 @@ import type {
 } from '../types';
 import { Combobox } from './Combobox';
 import { HardConflictAlert, SoftWarningAlert } from './ConflictNotification';
+import { ConfirmModal } from './ConfirmModal';
 
 // Inline quick-create mini-form
 interface QuickCreateProps {
@@ -208,6 +209,56 @@ export function EntryModal({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [quickCreate, setQuickCreate] = useState<{ type: 'batch' | 'subject' | 'faculty' | 'room'; initial: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Detect all contiguous slots belonging to this session
+  const consecutiveSessionEntries = useMemo(() => {
+    if (!existingEntry || !slots.length || !entries.length) return existingEntry ? [existingEntry] : [];
+    const sortedSlots = [...slots].sort((a, b) => a.sort_order - b.sort_order);
+    const currentIdx = sortedSlots.findIndex((s) => s.id === existingEntry.time_slot_id);
+    if (currentIdx === -1) return [existingEntry];
+
+    const matchingEntries = entries.filter(
+      (e) =>
+        e.batch_id === existingEntry.batch_id &&
+        e.subject_id === existingEntry.subject_id &&
+        e.group_id === existingEntry.group_id &&
+        e.day === existingEntry.day,
+    );
+    const entryBySlot = new Map(matchingEntries.map((e) => [e.time_slot_id, e]));
+
+    const chain: TimetableEntry[] = [existingEntry];
+
+    // Walk backward
+    let i = currentIdx - 1;
+    let lastOrder = sortedSlots[currentIdx].sort_order;
+    while (i >= 0) {
+      const s = sortedSlots[i];
+      if (s.is_break || s.sort_order !== lastOrder - 1) break;
+      const prev = entryBySlot.get(s.id);
+      if (!prev) break;
+      chain.unshift(prev);
+      lastOrder = s.sort_order;
+      i--;
+    }
+
+    // Walk forward
+    i = currentIdx + 1;
+    lastOrder = sortedSlots[currentIdx].sort_order;
+    while (i < sortedSlots.length) {
+      const s = sortedSlots[i];
+      if (s.is_break || s.sort_order !== lastOrder + 1) break;
+      const next = entryBySlot.get(s.id);
+      if (!next) break;
+      chain.push(next);
+      lastOrder = s.sort_order;
+      i++;
+    }
+
+    return chain;
+  }, [existingEntry, slots, entries]);
+
+  const spanCount = consecutiveSessionEntries.length;
 
   // True when the currently selected group already has a lab entry for this subject
   // (on any day), meaning saving would be blocked anyway. Used to grey out Save.
@@ -375,9 +426,13 @@ export function EntryModal({
     if (!existingEntry) return;
     setDeletePending(true);
     try {
-      await deleteEntry(existingEntry.id);
+      await deleteEntry(existingEntry.id, true);
       qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-      toast.success('Entry deleted');
+      toast.success(
+        spanCount > 1
+          ? `${selectedSubject?.type === 'lab' ? 'Lab' : 'Class'} session deleted (${spanCount} periods removed)`
+          : 'Entry deleted'
+      );
       onClose();
     } catch {
       toast.error('Failed to delete entry');
@@ -746,12 +801,12 @@ export function EntryModal({
             {isEditing && (
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={() => setConfirmDelete(true)}
                 disabled={deletePending}
                 className="btn btn-sm btn-danger"
               >
                 <Trash2 size={13} />
-                {deletePending ? 'Deleting…' : 'Delete'}
+                {deletePending ? 'Deleting…' : spanCount > 1 ? `Delete Session (${spanCount}h)` : 'Delete'}
               </button>
             )}
           </div>
@@ -771,6 +826,24 @@ export function EntryModal({
           </div>
         </div>
       </div>
+
+      {confirmDelete && (
+        <ConfirmModal
+          title={spanCount > 1 ? `Delete ${selectedSubject?.type === 'lab' ? 'Lab' : 'Class'} Session` : 'Delete Entry'}
+          message={
+            spanCount > 1
+              ? `This ${selectedSubject?.type === 'lab' ? 'lab' : 'class'} session spans ${spanCount} consecutive periods (${existingEntry?.subject.name}${existingEntry?.group ? ` • ${existingEntry.group.name}` : ''}). Deleting it will atomically remove all ${spanCount} periods.`
+              : `Are you sure you want to delete this class entry (${existingEntry?.subject.name})? This action cannot be undone.`
+          }
+          confirmText={spanCount > 1 ? `Delete All ${spanCount} Periods` : 'Delete'}
+          danger={true}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            handleDelete();
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }

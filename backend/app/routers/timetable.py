@@ -674,16 +674,80 @@ def update_entry(
     )
 
 
+def _get_contiguous_session_entries(db: Session, entry: TimetableEntry) -> List[TimetableEntry]:
+    """Finds all contiguous entries on the same day belonging to the same class/lab session chain."""
+    all_slots = db.query(TimeSlot).order_by(TimeSlot.sort_order).all()
+    current_idx = next((i for i, s in enumerate(all_slots) if s.id == entry.time_slot_id), None)
+    if current_idx is None:
+        return [entry]
+
+    query = db.query(TimetableEntry).filter(
+        TimetableEntry.batch_id == entry.batch_id,
+        TimetableEntry.subject_id == entry.subject_id,
+        TimetableEntry.day == entry.day,
+    )
+    if entry.group_id is None:
+        query = query.filter(TimetableEntry.group_id.is_(None))
+    else:
+        query = query.filter(TimetableEntry.group_id == entry.group_id)
+
+    sibling_entries = query.all()
+    entry_by_slot_id = {e.time_slot_id: e for e in sibling_entries}
+
+    chain = [entry]
+
+    # Walk backwards to find earlier contiguous slots
+    i = current_idx - 1
+    last_order = all_slots[current_idx].sort_order
+    while i >= 0:
+        prev_slot = all_slots[i]
+        if prev_slot.is_break or prev_slot.sort_order != last_order - 1:
+            break
+        prev_entry = entry_by_slot_id.get(prev_slot.id)
+        if not prev_entry:
+            break
+        chain.append(prev_entry)
+        last_order = prev_slot.sort_order
+        i -= 1
+
+    # Walk forwards to find later contiguous slots
+    i = current_idx + 1
+    last_order = all_slots[current_idx].sort_order
+    while i < len(all_slots):
+        next_slot = all_slots[i]
+        if next_slot.is_break or next_slot.sort_order != last_order + 1:
+            break
+        next_entry = entry_by_slot_id.get(next_slot.id)
+        if not next_entry:
+            break
+        chain.append(next_entry)
+        last_order = next_slot.sort_order
+        i += 1
+
+    return chain
+
+
 @router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_entry(
     entry_id: int,
+    delete_consecutive: bool = Query(
+        default=True,
+        description="Delete all contiguous slots of this session (default true for multi-slot classes)",
+    ),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     entry = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
-    db.delete(entry)
+
+    if delete_consecutive:
+        entries_to_delete = _get_contiguous_session_entries(db, entry)
+    else:
+        entries_to_delete = [entry]
+
+    for e in entries_to_delete:
+        db.delete(e)
     db.commit()
 
 
