@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Eye, EyeOff, LogIn } from 'lucide-react';
+import { Eye, EyeOff, LogIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { login } from '../api';
+import logoImg from '../assets/logo.png';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -43,9 +44,11 @@ export function LoginPage() {
       <div className="relative w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-500/20 border border-brand-500/30 mb-4">
-            <CalendarDays size={28} className="text-brand-600" />
-          </div>
+          <img
+            src={logoImg}
+            alt="NitaTime Logo"
+            className="w-16 h-16 rounded-2xl mx-auto mb-4 object-contain shadow-md border border-slate-100"
+          />
           <h1 className="text-2xl font-bold text-slate-800">NitaTime</h1>
           <p className="text-sm text-slate-500 mt-1">Timetable Management System</p>
         </div>

@@ -4,6 +4,7 @@ import {
   CalendarDays, ChevronLeft, ChevronRight,
   Clock, GraduationCap, LogOut, Settings, Users, MapPin
 } from 'lucide-react';
+import logoImg from '../assets/logo.png';
 
 export function Layout() {
   const navigate = useNavigate();
@@ -23,11 +24,13 @@ export function Layout() {
         style={{ position: 'sticky', top: 0, height: '100vh' }}
       >
         {/* Logo */}
-        <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-slate-200
+        <div className={`flex items-center gap-2.5 px-3.5 py-3.5 border-b border-slate-200
                         ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-7 h-7 rounded-lg bg-brand-50 border border-brand-200 flex items-center justify-center flex-shrink-0">
-            <CalendarDays size={15} className="text-brand-600" />
-          </div>
+          <img
+            src={logoImg}
+            alt="NitaTime Logo"
+            className="w-8 h-8 rounded-lg object-contain flex-shrink-0 shadow-xs"
+          />
           {!collapsed && (
             <span className="font-bold text-slate-900 text-sm tracking-tight">NitaTime</span>
           )}
