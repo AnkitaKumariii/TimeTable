@@ -518,6 +518,7 @@ def create_entries_bulk(
     transaction is rolled back and an HTTPException is raised.
     If there's a warning and force=False, returns the warning without committing.
     """
+    savepoint = db.begin_nested()
     try:
         responses = []
         for idx, payload in enumerate(payloads):
@@ -526,14 +527,16 @@ def create_entries_bulk(
             try:
                 resp = _create_single_entry(db, payload, force)
             except HTTPException as exc:
-                db.rollback()
+                if savepoint.is_active:
+                    savepoint.rollback()
                 if len(payloads) > 1:
                     detail_msg = f"Cannot schedule {len(payloads)}-period lab (all slots rolled back): conflict in {slot_name} — {exc.detail}"
                     raise HTTPException(status_code=exc.status_code, detail=detail_msg)
                 raise exc
 
             if resp.status == "warning" and not force:
-                db.rollback()
+                if savepoint.is_active:
+                    savepoint.rollback()
                 warning_msg = f"Lab auto-fill warning at {slot_name}: {resp.message}" if len(payloads) > 1 else resp.message
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
@@ -557,8 +560,11 @@ def create_entries_bulk(
             final_responses.append(resp)
             
         return final_responses
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
+        if savepoint.is_active:
+            savepoint.rollback()
         raise e
 
 
@@ -697,6 +703,7 @@ def update_entries_bulk(
     If any entry has a hard conflict (409) or an unforced warning, all updates
     are rolled back without committing, preserving entry versions and preventing partial state.
     """
+    savepoint = db.begin_nested()
     try:
         responses = []
         for idx, item in enumerate(payloads):
@@ -705,14 +712,16 @@ def update_entries_bulk(
             try:
                 resp = _update_single_entry(db, item.id, item, force)
             except HTTPException as exc:
-                db.rollback()
+                if savepoint.is_active:
+                    savepoint.rollback()
                 if len(payloads) > 1:
                     detail_msg = f"Cannot update {len(payloads)}-period session (all changes rolled back): conflict in {slot_name} — {exc.detail}"
                     raise HTTPException(status_code=exc.status_code, detail=detail_msg)
                 raise exc
 
             if resp.status == "warning" and not force:
-                db.rollback()
+                if savepoint.is_active:
+                    savepoint.rollback()
                 warning_msg = f"Session update warning at {slot_name}: {resp.message}" if len(payloads) > 1 else resp.message
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
@@ -735,8 +744,11 @@ def update_entries_bulk(
             final_responses.append(resp)
 
         return final_responses
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
+        if savepoint.is_active:
+            savepoint.rollback()
         raise e
 
 

@@ -828,6 +828,16 @@ def test_update_entries_bulk_atomic_rollback_on_conflict(auth_client):
     assert "rolled back" in bulk_upd_res.json()["detail"].lower()
     assert "Slot W2" in bulk_upd_res.json()["detail"]
 
+    # Read back entries and verify neither e1 nor e2 was modified
+    entries_res = auth_client.get(f"/api/timetable/entries?batch_id={batch_id}")
+    assert entries_res.status_code == 200
+    entries_by_id = {e["id"]: e for e in entries_res.json()}
+
+    assert entries_by_id[e1["id"]]["room_id"] == room1_id
+    assert entries_by_id[e1["id"]]["version"] == e1["version"]
+    assert entries_by_id[e2["id"]]["room_id"] == room1_id
+    assert entries_by_id[e2["id"]]["version"] == e2["version"]
+
 
 def test_consecutive_faculty_warning_same_batch_different_subjects(auth_client):
     """Faculty teaching different subjects in consecutive periods of the same batch should trigger a soft warning."""
