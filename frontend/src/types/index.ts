@@ -115,7 +115,7 @@ export interface BatchUpdate { name?: string; color?: string; is_active?: boolea
 export interface BatchGroupCreate { name: string }
 export interface BatchGroupUpdate { name?: string }
 export interface SubjectCreate { batch_id: number; name: string; short_code: string; color: string; hours_per_week: number; type: SubjectType }
-export interface SubjectUpdate { name?: string; short_code?: string; color?: string; hours_per_week?: number; type?: SubjectType }
+export interface SubjectUpdate { batch_id?: number; name?: string; short_code?: string; color?: string; hours_per_week?: number; type?: SubjectType }
 export interface FacultyCreate { name: string; email?: string; role?: FacultyRole }
 export interface FacultyUpdate { name?: string; email?: string; role?: FacultyRole }
 export interface TimeSlotCreate { label: string; start_time: string; end_time: string; sort_order: number; is_break?: boolean }

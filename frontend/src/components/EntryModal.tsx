@@ -7,7 +7,7 @@ import axios from 'axios';
 import {
   createBatch, createEntriesBulk, createFaculty, createSubject, createRoom,
   deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
-  updateEntry, getEntries, getBatchGroups, getTimeSlots,
+  updateEntriesBulk, getEntries, getBatchGroups, getTimeSlots,
 } from '../api';
 import type {
   Batch, ConflictingEntry, DayOfWeek, FacultyMember, Room,
@@ -16,6 +16,7 @@ import type {
 import { Combobox } from './Combobox';
 import { HardConflictAlert, SoftWarningAlert } from './ConflictNotification';
 import { ConfirmModal } from './ConfirmModal';
+import { getGroupColorTheme } from '../lib/groupStyles';
 
 // Inline quick-create mini-form
 interface QuickCreateProps {
@@ -259,6 +260,10 @@ export function EntryModal({
   }, [existingEntry, slots, entries]);
 
   const spanCount = consecutiveSessionEntries.length;
+  const sessionEntryIds = useMemo(
+    () => new Set(consecutiveSessionEntries.map((e) => e.id)),
+    [consecutiveSessionEntries]
+  );
 
   // True when the currently selected group already has a lab entry for this subject
   // (on any day), meaning saving would be blocked anyway. Used to grey out Save.
@@ -276,7 +281,7 @@ export function EntryModal({
     selectedSubject?.type === 'lab' &&
     groupId != null &&
     entries.some(
-      (e) => e.subject_id === subjectId && e.group_id === groupId && e.id !== existingEntry?.id,
+      (e) => e.subject_id === subjectId && e.group_id === groupId && !sessionEntryIds.has(e.id),
     );
 
   const isComplete =
@@ -309,7 +314,12 @@ export function EntryModal({
 
     try {
       if (isEditing) {
-        const res = await updateEntry(existingEntry.id, {
+        const entriesToUpdate = consecutiveSessionEntries.length > 1
+          ? consecutiveSessionEntries
+          : [existingEntry];
+
+        const updatePayloads = entriesToUpdate.map((sessionEntry) => ({
+          id: sessionEntry.id,
           batch_id: batchId!,
           group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
@@ -317,19 +327,26 @@ export function EntryModal({
             ? facultyIds.filter((id): id is number => id !== null).slice(0, 1)
             : facultyIds.filter((id): id is number => id !== null),
           room_id: roomId!,
-          day: day!,
-          time_slot_id: slotId!,
-          version: existingEntry.version,
-        }, force);
+          day: sessionEntry.day,
+          time_slot_id: sessionEntry.time_slot_id,
+          version: sessionEntry.version,
+        }));
 
-        if (res.status === 'warning' && !force) {
+        const res = await updateEntriesBulk(updatePayloads, force);
+
+        if (!Array.isArray(res) && res.status === 'warning') {
           setSaveStatus('idle');
           setConflict({ kind: 'warning', message: res.message, conflicting: res.conflicting_entry });
           return;
         }
+
         setSaveStatus('saved');
         qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-        toast.success('Entry updated');
+        toast.success(
+          entriesToUpdate.length > 1
+            ? `${selectedSubject?.type === 'lab' ? 'Lab' : 'Class'} session updated (${entriesToUpdate.length} periods)`
+            : 'Entry updated'
+        );
         onSaved();
       } else {
         // New entry creation — use bulk endpoint to ensure "all-or-nothing" auto-fill for labs
@@ -485,7 +502,7 @@ export function EntryModal({
             <div className="flex flex-wrap gap-2">
               {filteredSubjects.map((s) => {
                 const isSelected = subjectId === s.id;
-                const usageCount = entries.filter((e) => e.subject_id === s.id && (!existingEntry || e.id !== existingEntry.id)).length;
+                const usageCount = entries.filter((e) => e.subject_id === s.id && !sessionEntryIds.has(e.id)).length;
                 // Labs: each group has its own hours_per_week quota, so total capacity = hours × groups.
                 // Theory: global limit = hours_per_week.
                 const numGroups = s.type === 'lab' ? (groups.length || 1) : 1;
@@ -550,43 +567,61 @@ export function EntryModal({
                   {groups.map((g) => {
                     const isSelected = groupId === g.id;
                     // A group is "already scheduled" if it has any entry for this lab subject
-                    // (on any day), excluding the entry currently being edited.
+                    // (on any day), excluding the session currently being edited.
                     const scheduledEntry = entries.find(
-                      (e) => e.subject_id === subjectId && e.group_id === g.id && e.id !== existingEntry?.id
+                      (e) => e.subject_id === subjectId && e.group_id === g.id && !sessionEntryIds.has(e.id)
                     );
                     const isScheduled = !!scheduledEntry;
+
+                    // Once a group is selected for this slot, lock other groups so they cannot be selected/switched
+                    const isLockedOut = groupId != null && !isSelected;
+                    const isDisabled = isScheduled || isLockedOut;
+                    const theme = getGroupColorTheme(g.name);
+
                     return (
                       <button
                         key={g.id}
                         type="button"
                         onClick={() => {
-                          if (!isScheduled) { setGroupId(g.id); setConflict({ kind: 'none' }); }
+                          if (!isDisabled) {
+                            setGroupId(g.id);
+                            setConflict({ kind: 'none' });
+                          }
                         }}
-                        disabled={isScheduled}
-                        title={isScheduled ? `Already scheduled on ${scheduledEntry.day}` : undefined}
-                        className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[90px]
+                        disabled={isDisabled}
+                        title={
+                          isScheduled
+                            ? `Already scheduled on ${scheduledEntry.day}`
+                            : isLockedOut
+                              ? 'Lab group cannot be changed once selected for this slot'
+                              : undefined
+                        }
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[95px]
                           ${
                             isSelected
-                              ? 'border-brand-500/60 ring-1 ring-brand-500/60 bg-brand-50'
-                              : isScheduled
-                                ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed'
-                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                              ? `${theme.selectedCard} font-semibold shadow-xs`
+                              : isDisabled
+                                ? 'border-slate-200 bg-slate-50 opacity-40 cursor-not-allowed pointer-events-none'
+                                : `${theme.unselectedCard}`
                           }`}
                       >
-                        <span
-                          className={`text-xs font-semibold ${
-                            isSelected ? 'text-brand-600' : isScheduled ? 'text-slate-400' : 'text-slate-700'
-                          }`}
-                        >
-                          {g.name}
+                        <span className="text-xs font-bold flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${isDisabled ? 'bg-slate-300' : theme.dot}`} />
+                          <span className={isSelected ? 'font-bold' : isDisabled ? 'text-slate-400' : theme.text}>
+                            {g.name}
+                          </span>
                         </span>
                         {isScheduled ? (
-                          <span className="text-[9px] mt-0.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-mono">
+                          <span className="text-[9px] mt-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-mono font-medium">
                             ✓ {scheduledEntry.day}
                           </span>
                         ) : isSelected ? (
-                          <span className="text-[9px] mt-0.5 px-1.5 py-0.5 rounded bg-brand-100 text-brand-600 font-mono">
+                          <span className={`text-[9px] mt-1 px-1.5 py-0.5 rounded border font-mono font-medium ${theme.badge}`}>
                             Selected
+                          </span>
+                        ) : isLockedOut ? (
+                          <span className="text-[9px] mt-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 font-mono">
+                            Locked
                           </span>
                         ) : null}
                       </button>

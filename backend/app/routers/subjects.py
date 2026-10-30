@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
-from app.models import Batch, Subject, User
+from app.models import Batch, Subject, SubjectType, TimetableEntry, User
 from app.schemas import SubjectCreate, SubjectOut, SubjectUpdate
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
@@ -78,12 +79,26 @@ def update_subject(
 
     data = payload.model_dump(exclude_unset=True)
 
-    if "short_code" in data:
+    # 1. Batch change validation
+    target_batch_id = data.get("batch_id", subject.batch_id)
+    if "batch_id" in data and data["batch_id"] != subject.batch_id:
+        if not db.query(Batch).filter(Batch.id == data["batch_id"]).first():
+            raise HTTPException(status_code=404, detail="Target batch not found")
+        has_entries = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id).first()
+        if has_entries:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot move subject to another batch while timetable entries exist for this subject.",
+            )
+
+    # 2. Short code conflict check
+    if "short_code" in data or ("batch_id" in data and data["batch_id"] != subject.batch_id):
+        check_code = data.get("short_code", subject.short_code)
         conflict = (
             db.query(Subject)
             .filter(
-                Subject.batch_id == subject.batch_id,
-                Subject.short_code == data["short_code"],
+                Subject.batch_id == target_batch_id,
+                Subject.short_code == check_code,
                 Subject.id != subject_id,
             )
             .first()
@@ -91,8 +106,48 @@ def update_subject(
         if conflict:
             raise HTTPException(
                 status_code=409,
-                detail=f"Subject '{data['short_code']}' already exists in this batch",
+                detail=f"Subject '{check_code}' already exists in this batch",
             )
+
+    # 3. Subject type change validation
+    if "type" in data and data["type"] != subject.type:
+        has_entries = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id).first()
+        if has_entries:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot change subject type while timetable entries exist for this subject. Delete the entries first.",
+            )
+
+    # 4. Hours per week reduction validation
+    if "hours_per_week" in data:
+        new_hpw = data["hours_per_week"]
+        target_type = data.get("type", subject.type)
+        if target_type == SubjectType.lab:
+            group_counts = (
+                db.query(TimetableEntry.group_id, func.count(TimetableEntry.id))
+                .filter(TimetableEntry.subject_id == subject_id)
+                .group_by(TimetableEntry.group_id)
+                .all()
+            )
+            for gid, count in group_counts:
+                if count > new_hpw:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Cannot reduce hours/week to {new_hpw}: already has "
+                            f"{count} hour(s) scheduled for a lab group. Delete some entries first."
+                        ),
+                    )
+        else:
+            usage_count = db.query(TimetableEntry).filter(TimetableEntry.subject_id == subject_id).count()
+            if usage_count > new_hpw:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Cannot reduce hours/week to {new_hpw}: already has "
+                        f"{usage_count} hour(s) scheduled. Delete some entries first."
+                    ),
+                )
 
     for field, value in data.items():
         setattr(subject, field, value)

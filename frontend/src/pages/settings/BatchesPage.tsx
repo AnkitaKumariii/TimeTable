@@ -10,6 +10,7 @@ import {
 } from '../../api';
 import type { Batch, BatchCreate, Subject, SubjectCreate, SubjectType, BatchGroup } from '../../types';
 import { PRESET_COLORS } from '../../lib/utils';
+import { getGroupColorTheme } from '../../lib/groupStyles';
 import { ConfirmModal } from '../../components/ConfirmModal';
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
@@ -84,6 +85,17 @@ function BatchForm({ initial, onSave, onCancel }: { initial?: Batch; onSave: (da
   );
 }
 
+function formatApiError(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+    }
+  }
+  return fallback;
+}
+
 // ── Subject Components ────────────────────────────────────────────────────────
 
 function SubjectForm({ batchId, initial, onSave, onCancel }: {
@@ -101,8 +113,8 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
     if (!name.trim() || !shortCode.trim()) return;
     
     const hpw = Number(hoursPerWeek);
-    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw <= 0) {
-      toast.error('Hours per week must be a positive integer.');
+    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw <= 0 || hpw > 12) {
+      toast.error('Hours per week must be an integer between 1 and 12.');
       return;
     }
     
@@ -124,7 +136,7 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
         </div>
         <div>
           <label htmlFor="hpw-input" className="label">Hrs/Week</label>
-          <input id="hpw-input" type="number" min="1" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
+          <input id="hpw-input" type="number" min="1" max="12" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
         </div>
         <div>
           <label className="label">Type</label>
@@ -164,18 +176,19 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
       toast.success('Subject created');
       setShowForm(false);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to create subject') : 'Failed');
+      toast.error(formatApiError(err, 'Failed to create subject'));
     }
   }
 
   async function handleUpdate(subject: Subject, data: SubjectCreate) {
     try {
-      await updateSubject(subject.id, data);
+      const { batch_id: _batchId, ...updatePayload } = data;
+      await updateSubject(subject.id, updatePayload);
       qc.invalidateQueries({ queryKey: ['subjects'] });
       toast.success('Subject updated');
       setEditing(null);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed');
+      toast.error(formatApiError(err, 'Failed to update subject'));
     }
   }
 
@@ -185,7 +198,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
       qc.invalidateQueries({ queryKey: ['subjects'] });
       toast.success('Deleted');
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed');
+      toast.error(formatApiError(err, 'Failed to delete subject'));
     } finally {
       setDeletingSubject(null);
     }
@@ -333,19 +346,23 @@ function BatchGroupsPanel({ batchId }: { batchId: number }) {
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          {groups.map((g) => (
-            <div key={g.id} className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-full text-sm group shadow-sm">
-              <span className="text-slate-700 font-medium">{g.name}</span>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button type="button" aria-label={`Edit group ${g.name}`} onClick={() => { setEditing(g); setName(g.name); setShowForm(true); }} className="text-slate-400 hover:text-brand-600 p-0.5">
-                  <Edit2 size={12} />
-                </button>
-                <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => setDeletingGroup(g)} className="text-slate-400 hover:text-red-600 p-0.5">
-                  <Trash2 size={12} />
-                </button>
+          {groups.map((g) => {
+            const theme = getGroupColorTheme(g.name);
+            return (
+              <div key={g.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm group border shadow-xs ${theme.badge}`}>
+                <span className={`w-2 h-2 rounded-full ${theme.dot}`} />
+                <span className="font-semibold">{g.name}</span>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                  <button type="button" aria-label={`Edit group ${g.name}`} onClick={() => { setEditing(g); setName(g.name); setShowForm(true); }} className="text-slate-400 hover:text-brand-600 p-0.5">
+                    <Edit2 size={12} />
+                  </button>
+                  <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => setDeletingGroup(g)} className="text-slate-400 hover:text-red-600 p-0.5">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

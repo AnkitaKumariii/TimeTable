@@ -118,6 +118,7 @@ class SubjectCreate(_StrictInput):
 
 
 class SubjectUpdate(_StrictInput):
+    batch_id: Optional[PositiveInt] = None
     name: Optional[NonBlank200] = None
     short_code: Optional[ShortCode] = None
     color: Optional[HexColor] = None
@@ -252,6 +253,10 @@ class EntryUpdate(_StrictInput):
             if len(v) != len(set(v)):
                 raise ValueError("faculty_ids must not contain duplicates")
         return v
+
+
+class EntryBulkUpdateItem(EntryUpdate):
+    id: PositiveInt
 
 
 class ConflictingEntry(BaseModel):

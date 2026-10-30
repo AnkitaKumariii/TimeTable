@@ -39,26 +39,40 @@ flowchart TD
 
 ## Data Model Architecture
 
-The database follows a relational model centered around timetable entries.
+The database follows a relational model centered around timetable entries, supporting multi-faculty assignments, lab sub-groups, and physical rooms.
 
 ```mermaid
 erDiagram
-    users ||--o{ timetable_entries : "may manage"
-    batches ||--o{ timetable_entries : has
-    batches ||--o{ subjects : has
-    subjects ||--o{ timetable_entries : includes
-    faculty ||--o{ timetable_entries : teaches
-    time_slots ||--o{ timetable_entries : occurs_at
+    users ||--o| faculty : "linked to"
+    batches ||--o{ batch_groups : "divided into"
+    batches ||--o{ subjects : "offers"
+    batches ||--o{ timetable_entries : "has"
+    batch_groups ||--o{ timetable_entries : "assigned to"
+    subjects ||--o{ timetable_entries : "taught in"
+    rooms ||--o{ timetable_entries : "hosted in"
+    time_slots ||--o{ timetable_entries : "scheduled at"
+    timetable_entries ||--|{ timetable_entry_faculty : "includes"
+    faculty ||--|{ timetable_entry_faculty : "assigned via"
 
     users {
         int id PK
         string username
         string role "admin | faculty"
+        boolean is_active
+        datetime created_at
     }
 
     batches {
         int id PK
         string name "e.g. M.TECH-AI-1"
+        string color
+        boolean is_active
+    }
+
+    batch_groups {
+        int id PK
+        int batch_id FK
+        string name "e.g. Group 1"
     }
 
     subjects {
@@ -68,6 +82,7 @@ erDiagram
         string short_code
         string color
         int hours_per_week
+        string type "theory | lab"
     }
 
     faculty {
@@ -78,20 +93,36 @@ erDiagram
         int user_id FK
     }
 
+    rooms {
+        int id PK
+        string name "e.g. Lab 322"
+    }
+
     time_slots {
         int id PK
-        string period
-        boolean is_break
+        string label "e.g. Period 1"
+        time start_time
+        time end_time
         int sort_order
+        boolean is_break
     }
 
     timetable_entries {
         int id PK
         int batch_id FK
+        int group_id FK
         int subject_id FK
-        int faculty_id FK
+        int room_id FK
         int time_slot_id FK
         string day
+        int version
+        datetime created_at
+        datetime updated_at
+    }
+
+    timetable_entry_faculty {
+        int entry_id PK, FK
+        int faculty_id PK, FK
     }
 
     settings {
@@ -100,9 +131,9 @@ erDiagram
     }
 ```
 
-## Conflict Detection Flow
+## Conflict Detection & Scheduling Flow
 
-The system employs conflict resolution logic when assigning a faculty to a time slot.
+The system employs real-time constraint validation with optimistic locking (`version`), hard conflict prevention, and soft back-to-back warnings.
 
 ```mermaid
 sequenceDiagram
@@ -111,29 +142,31 @@ sequenceDiagram
     participant Backend
     participant DB
 
-    User->>Frontend: Saves Timetable Entry
-    Frontend->>Backend: POST /timetable-entries
-    Backend->>DB: Lock Subject Row (FOR UPDATE)
-    Backend->>DB: Check Faculty Schedule & Subject Limits
-    DB-->>Backend: Existing Faculty & Subject Entries
+    User->>Frontend: Creates / Auto-fills Session
+    Frontend->>Backend: POST /api/timetable/entries/bulk (or single entry)
+    Backend->>DB: Lock Subject Row (with_for_update)
+    Backend->>DB: Check Faculty Schedule, Room Availability & Limits
 
-    alt Hard Conflict (Same time slot, different batch)
-        Backend-->>Frontend: HTTP 409 (Conflict)
-        Frontend-->>User: Show Error (Cannot override)
-    else Soft Warning (Adjacent time slot, different batch)
-        Backend-->>Frontend: HTTP 200 { status: "warning" }
-        Frontend-->>User: Prompt: "Add Anyway" / "Cancel"
+    alt Hard Conflict (Room booked, Faculty booked, Group booked, or Limit exceeded)
+        Backend-->>DB: Rollback Transaction
+        Backend-->>Frontend: HTTP 409 Conflict (detailed error message)
+        Frontend-->>User: Show Hard Conflict Alert (cannot override)
+    else Soft Warning (Back-to-back adjacent period with different class/subject)
+        Backend-->>DB: Rollback Transaction (unless force=true)
+        Backend-->>Frontend: HTTP 200 { status: "warning", message: "..." }
+        Frontend-->>User: Prompt Warning Dialog: "Add Anyway" or "Cancel"
         opt User chooses "Add Anyway"
-            User->>Frontend: Confirm Force Add
-            Frontend->>Backend: POST /timetable-entries?force=true
-            Backend->>DB: Save Entry
-            DB-->>Backend: Success
-            Backend-->>Frontend: HTTP 200 OK
+            User->>Frontend: Confirm Force Save
+            Frontend->>Backend: POST /api/timetable/entries/bulk?force=true
+            Backend->>DB: Persist All Slots in Transaction
+            Backend-->>DB: Commit Transaction
+            Backend-->>Frontend: HTTP 201 Created
+            Frontend-->>User: Session Scheduled Successfully!
         end
     else No Conflict
-        Backend->>DB: Save Entry
-        DB-->>Backend: Success
-        Backend-->>Frontend: HTTP 200 OK
-        Frontend-->>User: Entry Saved!
+        Backend->>DB: Persist All Slots in Single Transaction
+        Backend-->>DB: Commit Transaction
+        Backend-->>Frontend: HTTP 201 Created
+        Frontend-->>User: Schedule Updated Successfully!
     end
 ```

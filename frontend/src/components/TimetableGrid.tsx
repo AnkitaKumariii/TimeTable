@@ -2,7 +2,8 @@ import { forwardRef, useMemo, useState } from 'react';
 import { BookOpen, CoffeeIcon, FlaskConical, Plus, X } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
 import type { Batch, BatchGroup, DayOfWeek, TimeSlot, TimetableEntry } from '../types';
-import { darken, fmtSlotRange, hexAlpha, isLightColor } from '../lib/utils';
+import { fmtSlotRange, hexAlpha } from '../lib/utils';
+import { getGroupColorTheme } from '../lib/groupStyles';
 import { EntryModal } from './EntryModal';
 import { getBatchGroups } from '../api';
 
@@ -475,8 +476,6 @@ function EntryCard({
   const bgColor     = hexAlpha(entry.subject.color, 0.13);
   const borderColor = hexAlpha(entry.subject.color, 0.3);
   const textColor   = entry.subject.color;
-  const batchBg     = hexAlpha(entry.batch.color, 0.2);
-  const batchText   = isLightColor(entry.batch.color) ? darken(entry.batch.color, 0.5) : entry.batch.color;
 
   const isTheory = entry.group_id == null;
 
@@ -551,14 +550,17 @@ function EntryCard({
 
       <span className="text-[10px] text-slate-600 leading-tight truncate">{entry.subject.name}</span>
 
-      {showGroupBadge && entry.group && (
-        <span
-          className="badge self-start text-[10px] px-1.5 py-0.5 mt-0.5 rounded-full font-semibold"
-          style={{ backgroundColor: batchBg, color: batchText }}
-        >
-          {entry.group.name}
-        </span>
-      )}
+      {showGroupBadge && entry.group && (() => {
+        const theme = getGroupColorTheme(entry.group.name);
+        return (
+          <span
+            className={`inline-flex items-center gap-1.5 self-start text-[10px] px-2 py-0.5 mt-0.5 rounded-full font-bold border tracking-wide shadow-xs ${theme.badge}`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${theme.dot}`} />
+            {entry.group.name}
+          </span>
+        );
+      })()}
 
       <div className="flex flex-col gap-1 w-full mt-0.5">
         {entry.faculties.map((faculty) => (

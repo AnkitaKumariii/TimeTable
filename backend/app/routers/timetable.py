@@ -5,6 +5,7 @@ import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -31,6 +32,7 @@ from app.schemas import (
     EntryCreateResponse,
     EntryOut,
     EntryUpdate,
+    EntryBulkUpdateItem,
 )
 
 router = APIRouter(prefix="/timetable", tags=["timetable"])
@@ -191,7 +193,13 @@ def _check_conflicts(
             ),
         )
 
-    # ── 2. Soft warning: back-to-back across DIFFERENT batches ─────────────────
+    # ── 2. Soft warning: back-to-back across different sessions or batches ─────
+    same_session_cond = and_(
+        TimetableEntry.batch_id == batch_id,
+        TimetableEntry.subject_id == subject_id,
+        (TimetableEntry.group_id == group_id) if group_id is not None else TimetableEntry.group_id.is_(None),
+    )
+
     # Check PREVIOUS slot (sort_order - 1, skip breaks)
     prev_slot = (
         db.query(TimeSlot)
@@ -215,7 +223,7 @@ def _check_conflicts(
                 TimetableEntry.faculties.any(Faculty.id.in_(faculty_ids)),
                 TimetableEntry.day == day,
                 TimetableEntry.time_slot_id == prev_slot.id,
-                TimetableEntry.batch_id != batch_id,
+                ~same_session_cond,
             )
         )
         if exclude_entry_id:
@@ -231,7 +239,7 @@ def _check_conflicts(
                         f"⏰ Heads up: One or more selected faculties are already teaching "
                         f"{adj.subject.name} for {adj.batch.name} during "
                         f"{_slot_label(prev_slot)}. You're now assigning them "
-                        f"for this batch at {_slot_label(current_slot)} — "
+                        f"at {_slot_label(current_slot)} — "
                         f"back to back with no gap."
                     ),
                     conflicting_entry=ConflictingEntry(
@@ -266,7 +274,7 @@ def _check_conflicts(
                 TimetableEntry.faculties.any(Faculty.id.in_(faculty_ids)),
                 TimetableEntry.day == day,
                 TimetableEntry.time_slot_id == next_slot.id,
-                TimetableEntry.batch_id != batch_id,
+                ~same_session_cond,
             )
         )
         if exclude_entry_id:
@@ -512,17 +520,27 @@ def create_entries_bulk(
     """
     try:
         responses = []
-        for payload in payloads:
-            resp = _create_single_entry(db, payload, force)
+        for idx, payload in enumerate(payloads):
+            slot = db.query(TimeSlot).filter(TimeSlot.id == payload.time_slot_id).first()
+            slot_name = _slot_label(slot) if slot else f"Period #{idx + 1}"
+            try:
+                resp = _create_single_entry(db, payload, force)
+            except HTTPException as exc:
+                db.rollback()
+                if len(payloads) > 1:
+                    detail_msg = f"Cannot schedule {len(payloads)}-period lab (all slots rolled back): conflict in {slot_name} — {exc.detail}"
+                    raise HTTPException(status_code=exc.status_code, detail=detail_msg)
+                raise exc
+
             if resp.status == "warning" and not force:
                 db.rollback()
-                # Return the warning response as a 200 JSON Response (same as single entry)
+                warning_msg = f"Lab auto-fill warning at {slot_name}: {resp.message}" if len(payloads) > 1 else resp.message
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
                     status_code=200,
                     content={
                         "status": "warning",
-                        "message": resp.message,
+                        "message": warning_msg,
                         "conflicting_entry": resp.conflicting_entry.model_dump() if resp.conflicting_entry else None,
                         "entry": None,
                     },
@@ -544,14 +562,12 @@ def create_entries_bulk(
         raise e
 
 
-@router.put("/entries/{entry_id}", response_model=EntryCreateResponse)
-def update_entry(
+def _update_single_entry(
+    db: Session,
     entry_id: int,
     payload: EntryUpdate,
-    force: bool = Query(default=False),
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
+    force: bool,
+) -> EntryCreateResponse:
     entry = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -563,7 +579,7 @@ def update_entry(
             detail="This entry was changed elsewhere — please refresh and retry.",
         )
 
-    update_data = payload.model_dump(exclude_unset=True, exclude={"version"})
+    update_data = payload.model_dump(exclude_unset=True, exclude={"version", "id"})
 
     # Determine effective values for conflict check
     eff_faculty_ids = update_data.get("faculty_ids", [f.id for f in entry.faculties])
@@ -643,15 +659,11 @@ def update_entry(
         raise HTTPException(status_code=409, detail=check.message)
 
     if check.status == "warning" and not force:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "warning",
-                "message": check.message,
-                "conflicting_entry": check.conflicting_entry.model_dump() if check.conflicting_entry else None,
-                "entry": None,
-            },
+        return EntryCreateResponse(
+            status="warning",
+            entry=None, # type: ignore
+            message=check.message,
+            conflicting_entry=check.conflicting_entry,
         )
 
     update_data.pop("faculty_ids", None)
@@ -660,18 +672,103 @@ def update_entry(
     entry.faculties = updated_faculties
     entry.version += 1
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Timetable entry conflicts with an existing entry")
 
-    full = _load_entry(db, entry.id)
     return EntryCreateResponse(
         status=check.status if check.status == "warning" else "ok",
-        entry=EntryOut.model_validate(full),
+        entry=entry, # type: ignore
         message=check.message,
         conflicting_entry=check.conflicting_entry,
     )
+
+
+@router.put("/entries/bulk", response_model=List[EntryCreateResponse])
+def update_entries_bulk(
+    payloads: List[EntryBulkUpdateItem],
+    force: bool = Query(default=False, description="Set true to save despite a warning"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Updates multiple entries in a single atomic transaction.
+    If any entry has a hard conflict (409) or an unforced warning, all updates
+    are rolled back without committing, preserving entry versions and preventing partial state.
+    """
+    try:
+        responses = []
+        for idx, item in enumerate(payloads):
+            slot = db.query(TimeSlot).filter(TimeSlot.id == item.time_slot_id).first() if item.time_slot_id else None
+            slot_name = _slot_label(slot) if slot else f"Period #{idx + 1}"
+            try:
+                resp = _update_single_entry(db, item.id, item, force)
+            except HTTPException as exc:
+                db.rollback()
+                if len(payloads) > 1:
+                    detail_msg = f"Cannot update {len(payloads)}-period session (all changes rolled back): conflict in {slot_name} — {exc.detail}"
+                    raise HTTPException(status_code=exc.status_code, detail=detail_msg)
+                raise exc
+
+            if resp.status == "warning" and not force:
+                db.rollback()
+                warning_msg = f"Session update warning at {slot_name}: {resp.message}" if len(payloads) > 1 else resp.message
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "warning",
+                        "message": warning_msg,
+                        "conflicting_entry": resp.conflicting_entry.model_dump() if resp.conflicting_entry else None,
+                        "entry": None,
+                    },
+                )
+            responses.append(resp)
+
+        db.commit()
+
+        final_responses = []
+        for resp in responses:
+            full = _load_entry(db, resp.entry.id)
+            resp.entry = EntryOut.model_validate(full)
+            final_responses.append(resp)
+
+        return final_responses
+    except Exception as e:
+        db.rollback()
+        raise e
+
+
+@router.put("/entries/{entry_id}", response_model=EntryCreateResponse)
+def update_entry(
+    entry_id: int,
+    payload: EntryUpdate,
+    force: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        resp = _update_single_entry(db, entry_id, payload, force)
+        if resp.status == "warning" and not force:
+            db.rollback()
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "warning",
+                    "message": resp.message,
+                    "conflicting_entry": resp.conflicting_entry.model_dump() if resp.conflicting_entry else None,
+                    "entry": None,
+                },
+            )
+        db.commit()
+        full = _load_entry(db, entry_id)
+        resp.entry = EntryOut.model_validate(full)
+        return resp
+    except Exception as e:
+        db.rollback()
+        raise e
 
 
 def _get_contiguous_session_entries(db: Session, entry: TimetableEntry) -> List[TimetableEntry]:
