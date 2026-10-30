@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -73,11 +74,14 @@ export function ConfirmModal({
     };
   }, [onCancel]);
 
-  return (
-    <div className="modal-backdrop">
+  return createPortal(
+    <div
+      className="modal-backdrop !z-[60]"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
       <div 
         ref={modalRef}
-        className="modal-panel max-w-sm"
+        className="modal-panel max-w-sm !z-[70]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
@@ -108,6 +112,7 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

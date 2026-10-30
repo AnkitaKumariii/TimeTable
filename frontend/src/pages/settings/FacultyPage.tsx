@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 import { getFaculty, createFaculty, updateFaculty, deleteFaculty } from '../../api';
 import type { FacultyMember, FacultyCreate, FacultyRole } from '../../types';
+import { ConfirmModal } from '../../components/ConfirmModal';
 
 const ROLE_LABELS: Record<FacultyRole, string> = {
   professor: 'Professor',
@@ -99,6 +100,7 @@ export function FacultyPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<FacultyMember | null>(null);
+  const [deleting, setDeleting] = useState<FacultyMember | null>(null);
   const { data: faculty = [], isLoading } = useQuery({ queryKey: ['faculty'], queryFn: getFaculty });
 
   const professors = faculty.filter((f) => f.role === 'professor');
@@ -126,14 +128,15 @@ export function FacultyPage() {
     }
   }
 
-  async function handleDelete(f: FacultyMember) {
-    if (!window.confirm(`Remove "${f.name}" from the faculty list?`)) return;
+  async function confirmDelete(f: FacultyMember) {
     try {
       await deleteFaculty(f.id);
       qc.invalidateQueries({ queryKey: ['faculty'] });
       toast.success('Removed');
     } catch (err: unknown) {
       toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to delete faculty') : 'Failed');
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -154,7 +157,7 @@ export function FacultyPage() {
                 {editing?.id === f.id ? (
                   <FacultyForm initial={f} onSave={(d) => handleUpdate(f, d)} onCancel={() => setEditing(null)} />
                 ) : (
-                  <FacultyRow f={f} onEdit={() => { setEditing(f); setShowForm(false); }} onDelete={() => handleDelete(f)} />
+                  <FacultyRow f={f} onEdit={() => { setEditing(f); setShowForm(false); }} onDelete={() => setDeleting(f)} />
                 )}
               </div>
             ))}
@@ -178,6 +181,16 @@ export function FacultyPage() {
 
       {showForm && !editing && (
         <div className="mb-6"><FacultyForm onSave={handleCreate} onCancel={() => setShowForm(false)} /></div>
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Remove Faculty"
+          message={`Remove "${deleting.name}" from the faculty list?`}
+          confirmText="Remove"
+          onConfirm={() => confirmDelete(deleting)}
+          onCancel={() => setDeleting(null)}
+        />
       )}
 
       {isLoading ? (

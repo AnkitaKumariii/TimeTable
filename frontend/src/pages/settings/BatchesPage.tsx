@@ -10,6 +10,8 @@ import {
 } from '../../api';
 import type { Batch, BatchCreate, Subject, SubjectCreate, SubjectType, BatchGroup } from '../../types';
 import { PRESET_COLORS } from '../../lib/utils';
+import { getGroupColorTheme } from '../../lib/groupStyles';
+import { ConfirmModal } from '../../components/ConfirmModal';
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
@@ -83,6 +85,17 @@ function BatchForm({ initial, onSave, onCancel }: { initial?: Batch; onSave: (da
   );
 }
 
+function formatApiError(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+    }
+  }
+  return fallback;
+}
+
 // ── Subject Components ────────────────────────────────────────────────────────
 
 function SubjectForm({ batchId, initial, onSave, onCancel }: {
@@ -100,8 +113,8 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
     if (!name.trim() || !shortCode.trim()) return;
     
     const hpw = Number(hoursPerWeek);
-    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw <= 0) {
-      toast.error('Hours per week must be a positive integer.');
+    if (hoursPerWeek.trim() === '' || !Number.isInteger(hpw) || hpw <= 0 || hpw > 12) {
+      toast.error('Hours per week must be an integer between 1 and 12.');
       return;
     }
     
@@ -123,7 +136,7 @@ function SubjectForm({ batchId, initial, onSave, onCancel }: {
         </div>
         <div>
           <label htmlFor="hpw-input" className="label">Hrs/Week</label>
-          <input id="hpw-input" type="number" min="1" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
+          <input id="hpw-input" type="number" min="1" max="12" className="input text-sm" value={hoursPerWeek} onChange={(e) => setHoursPerWeek(e.target.value)} />
         </div>
         <div>
           <label className="label">Type</label>
@@ -151,6 +164,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Subject | null>(null);
+  const [deletingSubject, setDeletingSubject] = useState<Subject | null>(null);
 
   const { data: allSubjects = [], isLoading } = useQuery({ queryKey: ['subjects'], queryFn: () => getSubjects() });
   const subjects = allSubjects.filter(s => s.batch_id === batchId);
@@ -162,29 +176,31 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
       toast.success('Subject created');
       setShowForm(false);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to create subject') : 'Failed');
+      toast.error(formatApiError(err, 'Failed to create subject'));
     }
   }
 
   async function handleUpdate(subject: Subject, data: SubjectCreate) {
     try {
-      await updateSubject(subject.id, data);
+      const { batch_id: _batchId, ...updatePayload } = data;
+      await updateSubject(subject.id, updatePayload);
       qc.invalidateQueries({ queryKey: ['subjects'] });
       toast.success('Subject updated');
       setEditing(null);
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed');
+      toast.error(formatApiError(err, 'Failed to update subject'));
     }
   }
 
-  async function handleDelete(subject: Subject) {
-    if (!window.confirm(`Delete "${subject.name}"? All timetable entries using this subject will also be deleted.`)) return;
+  async function confirmDeleteSubject(subject: Subject) {
     try {
       await deleteSubject(subject.id);
       qc.invalidateQueries({ queryKey: ['subjects'] });
       toast.success('Deleted');
     } catch (err: unknown) {
-      toast.error(axios.isAxiosError(err) ? String(err.response?.data?.detail) : 'Failed');
+      toast.error(formatApiError(err, 'Failed to delete subject'));
+    } finally {
+      setDeletingSubject(null);
     }
   }
 
@@ -199,6 +215,16 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
 
       {showForm && !editing && (
         <div className="mb-3"><SubjectForm batchId={batchId} onSave={handleCreate} onCancel={() => setShowForm(false)} /></div>
+      )}
+
+      {deletingSubject && (
+        <ConfirmModal
+          title="Delete Subject"
+          message={`Delete "${deletingSubject.name}"? All timetable entries using this subject will also be deleted.`}
+          confirmText="Delete"
+          onConfirm={() => confirmDeleteSubject(deletingSubject)}
+          onCancel={() => setDeletingSubject(null)}
+        />
       )}
 
       {isLoading ? <div className="text-slate-500 text-xs py-2">Loading subjects…</div> : subjects.length === 0 ? (
@@ -220,7 +246,7 @@ function BatchSubjectsPanel({ batchId }: { batchId: number }) {
                   <span className="text-[10px] uppercase font-semibold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-100">{s.type}</span>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     <button aria-label={`Edit subject ${s.name}`} onClick={() => { setEditing(s); setShowForm(false); }} className="text-slate-400 hover:text-brand-600 p-1"><Edit2 size={12} /></button>
-                    <button aria-label={`Delete subject ${s.name}`} onClick={() => handleDelete(s)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={12} /></button>
+                    <button aria-label={`Delete subject ${s.name}`} onClick={() => setDeletingSubject(s)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={12} /></button>
                   </div>
                 </div>
               )}
@@ -237,6 +263,7 @@ function BatchGroupsPanel({ batchId }: { batchId: number }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<BatchGroup | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<BatchGroup | null>(null);
   const [name, setName] = useState('');
 
   const { data: groups = [], isLoading } = useQuery({
@@ -269,8 +296,7 @@ function BatchGroupsPanel({ batchId }: { batchId: number }) {
     }
   }
 
-  async function handleDelete(group: BatchGroup) {
-    if (!window.confirm(`Delete group "${group.name}"? All associated timetable entries will also be deleted.`)) return;
+  async function confirmDeleteGroup(group: BatchGroup) {
     try {
       await deleteBatchGroup(batchId, group.id);
       qc.invalidateQueries({ queryKey: ['batch-groups', batchId] });
@@ -282,6 +308,8 @@ function BatchGroupsPanel({ batchId }: { batchId: number }) {
       } else {
         toast.error('Failed to delete');
       }
+    } finally {
+      setDeletingGroup(null);
     }
   }
 
@@ -302,25 +330,39 @@ function BatchGroupsPanel({ batchId }: { batchId: number }) {
         </form>
       )}
 
+      {deletingGroup && (
+        <ConfirmModal
+          title="Delete Lab Group"
+          message={`Delete group "${deletingGroup.name}"? All associated timetable entries will also be deleted.`}
+          confirmText="Delete"
+          onConfirm={() => confirmDeleteGroup(deletingGroup)}
+          onCancel={() => setDeletingGroup(null)}
+        />
+      )}
+
       {isLoading ? <div className="text-slate-500 text-xs py-2">Loading groups…</div> : groups.length === 0 ? (
         <div className="text-center py-4 text-slate-400 text-xs bg-slate-50 rounded border border-dashed border-slate-200">
           No lab groups added yet.
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          {groups.map((g) => (
-            <div key={g.id} className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-full text-sm group shadow-sm">
-              <span className="text-slate-700 font-medium">{g.name}</span>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button type="button" aria-label={`Edit group ${g.name}`} onClick={() => { setEditing(g); setName(g.name); setShowForm(true); }} className="text-slate-400 hover:text-brand-600 p-0.5">
-                  <Edit2 size={12} />
-                </button>
-                <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => handleDelete(g)} className="text-slate-400 hover:text-red-600 p-0.5">
-                  <Trash2 size={12} />
-                </button>
+          {groups.map((g) => {
+            const theme = getGroupColorTheme(g.name);
+            return (
+              <div key={g.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm group border shadow-xs ${theme.badge}`}>
+                <span className={`w-2 h-2 rounded-full ${theme.dot}`} />
+                <span className="font-semibold">{g.name}</span>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                  <button type="button" aria-label={`Edit group ${g.name}`} onClick={() => { setEditing(g); setName(g.name); setShowForm(true); }} className="text-slate-400 hover:text-brand-600 p-0.5">
+                    <Edit2 size={12} />
+                  </button>
+                  <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => setDeletingGroup(g)} className="text-slate-400 hover:text-red-600 p-0.5">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -334,6 +376,7 @@ export function BatchesPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Batch | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState<Batch | null>(null);
   const [expandedPanel, setExpandedPanel] = useState<{ id: number; tab: 'subjects' | 'groups' } | null>(null);
 
   const { data: batches = [], isLoading } = useQuery({ queryKey: ['batches'], queryFn: getBatches });
@@ -360,8 +403,7 @@ export function BatchesPage() {
     }
   }
 
-  async function handleDelete(batch: Batch) {
-    if (!window.confirm(`Delete "${batch.name}"? All subjects and timetable entries for this batch will also be deleted.`)) return;
+  async function confirmDeleteBatch(batch: Batch) {
     try {
       await deleteBatch(batch.id);
       qc.invalidateQueries({ queryKey: ['batches'] });
@@ -370,6 +412,8 @@ export function BatchesPage() {
       toast.success('Batch deleted');
     } catch (err: unknown) {
       toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to delete batch') : 'Failed to delete');
+    } finally {
+      setDeletingBatch(null);
     }
   }
 
@@ -389,6 +433,16 @@ export function BatchesPage() {
         <div className="mb-4">
           <BatchForm onSave={handleCreate} onCancel={() => setShowForm(false)} />
         </div>
+      )}
+
+      {deletingBatch && (
+        <ConfirmModal
+          title="Delete Batch"
+          message={`Delete "${deletingBatch.name}"? All subjects and timetable entries for this batch will also be deleted.`}
+          confirmText="Delete"
+          onConfirm={() => confirmDeleteBatch(deletingBatch)}
+          onCancel={() => setDeletingBatch(null)}
+        />
       )}
 
       {isLoading ? (
@@ -455,7 +509,7 @@ export function BatchesPage() {
                         <button
                           type="button"
                           aria-label={`Delete batch ${batch.name}`}
-                          onClick={() => handleDelete(batch)}
+                          onClick={() => setDeletingBatch(batch)}
                           className="btn-ghost p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50"
                         >
                           <Trash2 size={14} />

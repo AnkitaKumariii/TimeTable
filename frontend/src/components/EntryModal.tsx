@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Trash2, Save, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,7 +7,7 @@ import axios from 'axios';
 import {
   createBatch, createEntriesBulk, createFaculty, createSubject, createRoom,
   deleteEntry, getBatches, getFaculty, getSubjects, getRooms,
-  updateEntry, getEntries, getBatchGroups, getTimeSlots,
+  updateEntriesBulk, getEntries, getBatchGroups, getTimeSlots,
 } from '../api';
 import type {
   Batch, ConflictingEntry, DayOfWeek, FacultyMember, Room,
@@ -15,6 +15,8 @@ import type {
 } from '../types';
 import { Combobox } from './Combobox';
 import { HardConflictAlert, SoftWarningAlert } from './ConflictNotification';
+import { ConfirmModal } from './ConfirmModal';
+import { getGroupColorTheme } from '../lib/groupStyles';
 
 // Inline quick-create mini-form
 interface QuickCreateProps {
@@ -208,6 +210,60 @@ export function EntryModal({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [quickCreate, setQuickCreate] = useState<{ type: 'batch' | 'subject' | 'faculty' | 'room'; initial: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Detect all contiguous slots belonging to this session
+  const consecutiveSessionEntries = useMemo(() => {
+    if (!existingEntry || !slots.length || !entries.length) return existingEntry ? [existingEntry] : [];
+    const sortedSlots = [...slots].sort((a, b) => a.sort_order - b.sort_order);
+    const currentIdx = sortedSlots.findIndex((s) => s.id === existingEntry.time_slot_id);
+    if (currentIdx === -1) return [existingEntry];
+
+    const matchingEntries = entries.filter(
+      (e) =>
+        e.batch_id === existingEntry.batch_id &&
+        e.subject_id === existingEntry.subject_id &&
+        e.group_id === existingEntry.group_id &&
+        e.day === existingEntry.day,
+    );
+    const entryBySlot = new Map(matchingEntries.map((e) => [e.time_slot_id, e]));
+
+    const chain: TimetableEntry[] = [existingEntry];
+
+    // Walk backward
+    let i = currentIdx - 1;
+    let lastOrder = sortedSlots[currentIdx].sort_order;
+    while (i >= 0) {
+      const s = sortedSlots[i];
+      if (s.is_break || s.sort_order !== lastOrder - 1) break;
+      const prev = entryBySlot.get(s.id);
+      if (!prev) break;
+      chain.unshift(prev);
+      lastOrder = s.sort_order;
+      i--;
+    }
+
+    // Walk forward
+    i = currentIdx + 1;
+    lastOrder = sortedSlots[currentIdx].sort_order;
+    while (i < sortedSlots.length) {
+      const s = sortedSlots[i];
+      if (s.is_break || s.sort_order !== lastOrder + 1) break;
+      const next = entryBySlot.get(s.id);
+      if (!next) break;
+      chain.push(next);
+      lastOrder = s.sort_order;
+      i++;
+    }
+
+    return chain;
+  }, [existingEntry, slots, entries]);
+
+  const spanCount = consecutiveSessionEntries.length;
+  const sessionEntryIds = useMemo(
+    () => new Set(consecutiveSessionEntries.map((e) => e.id)),
+    [consecutiveSessionEntries]
+  );
 
   // True when the currently selected group already has a lab entry for this subject
   // (on any day), meaning saving would be blocked anyway. Used to grey out Save.
@@ -225,7 +281,7 @@ export function EntryModal({
     selectedSubject?.type === 'lab' &&
     groupId != null &&
     entries.some(
-      (e) => e.subject_id === subjectId && e.group_id === groupId && e.id !== existingEntry?.id,
+      (e) => e.subject_id === subjectId && e.group_id === groupId && !sessionEntryIds.has(e.id),
     );
 
   const isComplete =
@@ -258,7 +314,12 @@ export function EntryModal({
 
     try {
       if (isEditing) {
-        const res = await updateEntry(existingEntry.id, {
+        const entriesToUpdate = consecutiveSessionEntries.length > 1
+          ? consecutiveSessionEntries
+          : [existingEntry];
+
+        const updatePayloads = entriesToUpdate.map((sessionEntry) => ({
+          id: sessionEntry.id,
           batch_id: batchId!,
           group_id: selectedSubject?.type === 'lab' ? groupId : null,
           subject_id: subjectId!,
@@ -266,19 +327,26 @@ export function EntryModal({
             ? facultyIds.filter((id): id is number => id !== null).slice(0, 1)
             : facultyIds.filter((id): id is number => id !== null),
           room_id: roomId!,
-          day: day!,
-          time_slot_id: slotId!,
-          version: existingEntry.version,
-        }, force);
+          day: sessionEntry.day,
+          time_slot_id: sessionEntry.time_slot_id,
+          version: sessionEntry.version,
+        }));
 
-        if (res.status === 'warning' && !force) {
+        const res = await updateEntriesBulk(updatePayloads, force);
+
+        if (!Array.isArray(res) && res.status === 'warning') {
           setSaveStatus('idle');
           setConflict({ kind: 'warning', message: res.message, conflicting: res.conflicting_entry });
           return;
         }
+
         setSaveStatus('saved');
         qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-        toast.success('Entry updated');
+        toast.success(
+          entriesToUpdate.length > 1
+            ? `${selectedSubject?.type === 'lab' ? 'Lab' : 'Class'} session updated (${entriesToUpdate.length} periods)`
+            : 'Entry updated'
+        );
         onSaved();
       } else {
         // New entry creation — use bulk endpoint to ensure "all-or-nothing" auto-fill for labs
@@ -375,9 +443,13 @@ export function EntryModal({
     if (!existingEntry) return;
     setDeletePending(true);
     try {
-      await deleteEntry(existingEntry.id);
+      await deleteEntry(existingEntry.id, true);
       qc.invalidateQueries({ queryKey: ['timetable-entries'] });
-      toast.success('Entry deleted');
+      toast.success(
+        spanCount > 1
+          ? `${selectedSubject?.type === 'lab' ? 'Lab' : 'Class'} session deleted (${spanCount} periods removed)`
+          : 'Entry deleted'
+      );
       onClose();
     } catch {
       toast.error('Failed to delete entry');
@@ -430,7 +502,7 @@ export function EntryModal({
             <div className="flex flex-wrap gap-2">
               {filteredSubjects.map((s) => {
                 const isSelected = subjectId === s.id;
-                const usageCount = entries.filter((e) => e.subject_id === s.id && (!existingEntry || e.id !== existingEntry.id)).length;
+                const usageCount = entries.filter((e) => e.subject_id === s.id && !sessionEntryIds.has(e.id)).length;
                 // Labs: each group has its own hours_per_week quota, so total capacity = hours × groups.
                 // Theory: global limit = hours_per_week.
                 const numGroups = s.type === 'lab' ? (groups.length || 1) : 1;
@@ -495,43 +567,61 @@ export function EntryModal({
                   {groups.map((g) => {
                     const isSelected = groupId === g.id;
                     // A group is "already scheduled" if it has any entry for this lab subject
-                    // (on any day), excluding the entry currently being edited.
+                    // (on any day), excluding the session currently being edited.
                     const scheduledEntry = entries.find(
-                      (e) => e.subject_id === subjectId && e.group_id === g.id && e.id !== existingEntry?.id
+                      (e) => e.subject_id === subjectId && e.group_id === g.id && !sessionEntryIds.has(e.id)
                     );
                     const isScheduled = !!scheduledEntry;
+
+                    // Once a group is selected for this slot, lock other groups so they cannot be selected/switched
+                    const isLockedOut = groupId != null && !isSelected;
+                    const isDisabled = isScheduled || isLockedOut;
+                    const theme = getGroupColorTheme(g.name);
+
                     return (
                       <button
                         key={g.id}
                         type="button"
                         onClick={() => {
-                          if (!isScheduled) { setGroupId(g.id); setConflict({ kind: 'none' }); }
+                          if (!isDisabled) {
+                            setGroupId(g.id);
+                            setConflict({ kind: 'none' });
+                          }
                         }}
-                        disabled={isScheduled}
-                        title={isScheduled ? `Already scheduled on ${scheduledEntry.day}` : undefined}
-                        className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[90px]
+                        disabled={isDisabled}
+                        title={
+                          isScheduled
+                            ? `Already scheduled on ${scheduledEntry.day}`
+                            : isLockedOut
+                              ? 'Lab group cannot be changed once selected for this slot'
+                              : undefined
+                        }
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border transition-all text-left min-w-[95px]
                           ${
                             isSelected
-                              ? 'border-brand-500/60 ring-1 ring-brand-500/60 bg-brand-50'
-                              : isScheduled
-                                ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed'
-                                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                              ? `${theme.selectedCard} font-semibold shadow-xs`
+                              : isDisabled
+                                ? 'border-slate-200 bg-slate-50 opacity-40 cursor-not-allowed pointer-events-none'
+                                : `${theme.unselectedCard}`
                           }`}
                       >
-                        <span
-                          className={`text-xs font-semibold ${
-                            isSelected ? 'text-brand-600' : isScheduled ? 'text-slate-400' : 'text-slate-700'
-                          }`}
-                        >
-                          {g.name}
+                        <span className="text-xs font-bold flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${isDisabled ? 'bg-slate-300' : theme.dot}`} />
+                          <span className={isSelected ? 'font-bold' : isDisabled ? 'text-slate-400' : theme.text}>
+                            {g.name}
+                          </span>
                         </span>
                         {isScheduled ? (
-                          <span className="text-[9px] mt-0.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-mono">
+                          <span className="text-[9px] mt-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-mono font-medium">
                             ✓ {scheduledEntry.day}
                           </span>
                         ) : isSelected ? (
-                          <span className="text-[9px] mt-0.5 px-1.5 py-0.5 rounded bg-brand-100 text-brand-600 font-mono">
+                          <span className={`text-[9px] mt-1 px-1.5 py-0.5 rounded border font-mono font-medium ${theme.badge}`}>
                             Selected
+                          </span>
+                        ) : isLockedOut ? (
+                          <span className="text-[9px] mt-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 font-mono">
+                            Locked
                           </span>
                         ) : null}
                       </button>
@@ -746,12 +836,12 @@ export function EntryModal({
             {isEditing && (
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={() => setConfirmDelete(true)}
                 disabled={deletePending}
                 className="btn btn-sm btn-danger"
               >
                 <Trash2 size={13} />
-                {deletePending ? 'Deleting…' : 'Delete'}
+                {deletePending ? 'Deleting…' : spanCount > 1 ? `Delete Session (${spanCount}h)` : 'Delete'}
               </button>
             )}
           </div>
@@ -771,6 +861,24 @@ export function EntryModal({
           </div>
         </div>
       </div>
+
+      {confirmDelete && (
+        <ConfirmModal
+          title={spanCount > 1 ? `Delete ${selectedSubject?.type === 'lab' ? 'Lab' : 'Class'} Session` : 'Delete Entry'}
+          message={
+            spanCount > 1
+              ? `This ${selectedSubject?.type === 'lab' ? 'lab' : 'class'} session spans ${spanCount} consecutive periods (${existingEntry?.subject.name}${existingEntry?.group ? ` • ${existingEntry.group.name}` : ''}). Deleting it will atomically remove all ${spanCount} periods.`
+              : `Are you sure you want to delete this class entry (${existingEntry?.subject.name})? This action cannot be undone.`
+          }
+          confirmText={spanCount > 1 ? `Delete All ${spanCount} Periods` : 'Delete'}
+          danger={true}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            handleDelete();
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }

@@ -19,8 +19,14 @@ export function LoginPage() {
       const token = await login(username.trim(), password);
       localStorage.setItem('nitatime_token', token.access_token);
       navigate('/timetable', { replace: true });
-    } catch {
-      toast.error('Invalid username or password');
+    } catch (err: any) {
+      if (err?.response?.data?.detail) {
+        toast.error(err.response.data.detail);
+      } else if (err?.message) {
+        toast.error(err.message);
+      } else {
+        toast.error('Invalid username or password');
+      }
     } finally {
       setLoading(false);
     }

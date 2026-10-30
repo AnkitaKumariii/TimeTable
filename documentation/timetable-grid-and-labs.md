@@ -15,11 +15,25 @@ I have completed the major layout overhaul and implemented robust automation for
 - **Independent Backend Quotas:** The backend validation logic was split so theory subjects enforce a global `hours_per_week` limit, whereas lab subjects enforce the limit *per group*.
 
 ## 3. "All-or-Nothing" Transactional Safety
-- **Bulk API Endpoint:** Introduced a new backend endpoint at `POST /api/timetable/entries/bulk` that accepts multiple entry payloads.
-- **Atomic Transactions:** The bulk endpoint validates all consecutive slots inside a single database transaction. If *any* of the automated slots hits a hard conflict (such as a room being occupied or a faculty member double-booked), the entire transaction is rolled back, and the UI displays the exact backend error message indicating the conflict reason.
-- **Intelligent Warnings:** Minor adjacency warnings (like a faculty member teaching back-to-back classes) apply only when the neighboring class belongs to a *different* batch; consecutive lab hours for the same batch do not trigger them. Any warning encountered during bulk creation causes the transaction to roll back and is presented to the user for confirmation before allowing a forced save.
+- **Bulk Creation Endpoint:** `POST /api/timetable/entries/bulk` accepts a list of entry payloads for consecutive lab auto-fills.
+- **Bulk Update Endpoint:** `PUT /api/timetable/entries/bulk` accepts a list of updated entries for atomic multi-period session edits, preventing version desynchronization or partial state.
+- **Atomic Rollback on Error or Warning:** Both bulk endpoints validate all consecutive slots inside a single database transaction. If *any* slot encounters a hard conflict (room occupied, faculty double-booked, group conflict, or limit exceeded) or an unforced soft warning, the entire transaction is rolled back (`db.rollback()`), guaranteeing that no partial, orphaned, or misaligned slots remain.
+- **Context-Aware Error Messages:** Conflict messages explicitly report the period label and time window where the issue was detected (e.g. `conflict in Period 3 (11:00 AM–12:00 PM)`).
 
-## 4. Multi-Faculty Support (Many-to-Many)
+## 4. Enhanced Consecutive Booking Soft Warnings
+- **Cross-Subject Adjacency Detection:** Soft warnings for back-to-back faculty bookings now detect adjacent periods across **different subjects within the same batch** (e.g. Prof teaching Theory in Period 1 and Lab in Period 2) as well as across different batches.
+- **False Alarm Suppression:** The same multi-period lab session (same batch, same subject, same group) is recognized as contiguous periods of a single session and does not trigger false warnings during auto-fill.
+- **Admin Override:** Back-to-back warnings can be bypassed when intentional by confirming via `force=true`.
+
+## 5. Lab Group Locking & Distinctive Visual Styling
+- **Slot Group Locking:** Once a lab group is assigned to a slot, other group options in the entry modal become disabled, locked, and unclickable (`pointer-events-none`) to prevent accidental group swapping.
+- **Distinctive Group Tags (Option A):**
+  - **Group 1:** Teal theme (`bg-teal-50 text-teal-800 border-teal-300`) with a teal indicator dot (`bg-teal-500`).
+  - **Group 2:** Amber theme (`bg-amber-50 text-amber-900 border-amber-300`) with an amber indicator dot (`bg-amber-500`).
+  - **Group 3 & 4+:** Dedicated Purple and Rose themes with cyclic palette fallback for custom groups.
+  - Applied consistently across grid entry cards, modal group selectors, and settings panels.
+
+## 6. Multi-Faculty Support (Many-to-Many)
 
 ### Database Architecture
 - **Association Table:** `TimetableEntry` now stores faculty via a many-to-many relationship using a `timetable_entry_faculty` join table, replacing the previous single `faculty_id` column.
@@ -45,6 +59,17 @@ When adding or editing a **Lab** entry, the Faculty section displays three struc
 - At least one faculty across all slots must be selected before saving.
 - When editing an entry that previously had more than 4 faculties, the extra slots are automatically shown.
 
+## 7. Subject Hours/Week Semantics & Safe Updates
+- **Per-Group Lab Quota vs. Global Theory Quota:** Lab `hours_per_week` governs the weekly schedule budget for *each individual lab group* (e.g., a 2-hour lab gives 2 scheduled hours to Group 1 and 2 scheduled hours to Group 2). Theory `hours_per_week` governs the total weekly periods across the entire batch.
+- **Subject Edit Integrity & Safety Guards:**
+  - `PATCH /api/subjects/{id}` strictly rejects reducing `hours_per_week` below the count of already scheduled periods (per-group for labs, total for theory) with HTTP 400 and an informative error message.
+  - Modifying a subject's type (`lab` ↔ `theory`) is blocked with HTTP 400 when timetable entries exist for the subject.
+  - Reassigning a subject to another batch is blocked with HTTP 400 when entries exist for the subject.
+- **Payload Resiliency & Error Reporting:**
+  - `BatchesPage.tsx` strips `batch_id` prior to dispatching subject updates, avoiding Pydantic `extra="forbid"` rejections.
+  - `SubjectUpdate` schema in `backend/app/schemas.py` accepts optional `batch_id` to maintain client compatibility.
+  - `BatchesPage.tsx` extracts human-readable validation error messages instead of displaying `[object Object]` toast errors.
+
 ### Timetable Grid
 - Entry cards on the grid now render a stacked list of all assigned faculty members, each displaying their role badge (Prof. / TA) alongside their name.
 
@@ -54,4 +79,7 @@ When adding or editing a **Lab** entry, the Faculty section displays three struc
 - Verified that `TimetableGrid` renders correctly with stable `rowSpans` even during network latency (using shimmer loading placeholders).
 - Verified that the Professor dropdowns only show `professor`-role faculty and the TA dropdowns only show `teaching_assistant`-role faculty.
 - Verified that assigning a faculty member to two entries at the same time slot in any batch (including parallel groups) triggers a hard conflict.
-- All 23 backend pytest tests pass.
+- Verified that back-to-back classes for the same faculty across different subjects in the same batch trigger a soft warning with override support.
+- Verified that lab group slots lock other groups once assigned.
+- Verified atomic all-or-nothing rollback on both bulk creation and bulk session editing.
+- All 34 backend pytest tests pass.

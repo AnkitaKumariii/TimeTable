@@ -18,13 +18,14 @@ A modern, robust, and dynamic college timetable management system designed speci
 
 ### 📚 Advanced Batch & Group Management
 - **Multi-Batch Architecture**: Effortlessly manage timetables across multiple distinct cohorts (e.g. M.TECH-AI-1, B.TECH-CSE-3).
-- **🧪 Lab Groups (Batch Groups)**: Divide batches into smaller subgroups to schedule concurrent lab sessions. Allows for precise handling of resource-intensive sessions where only a portion of the batch is occupied.
-- **Subject Constraints**: Bind specific subjects to batches, categorize them as `Theory` or `Lab`, and enforce weekly hour limits per subject.
+- **🧪 Lab Groups (Batch Groups)**: Divide batches into smaller subgroups to schedule concurrent lab sessions. Includes distinct high-contrast group tags and slot-level group locking to prevent accidental switching.
+- **Subject Constraints**: Bind specific subjects to batches, categorize them as `Theory` or `Lab`, and enforce weekly hour limits per subject (globally for theory, per-group for labs).
 
 ### ⚠️ Intelligent Conflict Detection
 NitaTime ensures a flawless schedule by validating constraints in real-time before persisting any entry:
 - **Hard Conflicts**: Strictly prevents assigning the same faculty to different batches at the exact same time, and ensures rooms are not double-booked. Concurrently running lab groups within the same batch are gracefully handled.
-- **Soft Warnings**: Gently alerts the admin if a faculty member has consecutive back-to-back classes, allowing for an optional override if the schedule permits.
+- **All-or-Nothing Transactional Auto-fill**: Automatically schedules multi-period lab blocks with atomic rollback—if any slot conflicts, the entire session rolls back without leaving partial entries.
+- **Soft Warnings**: Gently alerts the admin if a faculty member has consecutive back-to-back classes across different classes/subjects, allowing for an optional override if the schedule permits.
 - **Optimistic Concurrency**: Employs row-level versioning. If multiple admins modify the schedule simultaneously, the system ensures changes aren't silently overwritten.
 
 ### ⚙️ Comprehensive Administrative Control
